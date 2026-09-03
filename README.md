@@ -25,7 +25,7 @@ src/Aizuchi/          ホスト。環境変数でコネクタとプロバイダ�
 tests/                純粋関数・JSON 形状・Bot の流れ(偽コネクタ / 偽プロバイダ)のテスト。xUnit v3 + Microsoft.Testing.Platform
 connectors/slack/     Slack アプリのマニフェストと手順
 charts/aizuchi/       Deployment + 任意の ExternalSecret
-compose.yml           ローカル開発(genkan 経由で https://aizuchi.localhost)
+compose.yml           ローカル開発(genkan 経由で https://aizuchi.localhost)。認証情報は compose.override.yml
 ```
 
 ### 増やし方
@@ -43,8 +43,10 @@ compose.yml           ローカル開発(genkan 経由で https://aizuchi.localh
 [danything/genkan](https://github.com/danything/genkan) を起動しておくと、`proxy` ネットワーク経由で
 https://aizuchi.localhost に振り分けられる(ポートは公開しない)。
 
+トークンと API キーは `compose.override.yml`(git 管理外)に書く。Compose が `compose.yml` に自動で重ねる。
+
 ```sh
-cp .env.example .env      # トークンと API キーを埋める
+cp compose.override.example.yml compose.override.yml   # 中身を埋める
 docker compose up -d --build
 curl -k https://aizuchi.localhost/readyz   # Socket Mode が繋がれば ok
 docker compose logs -f
@@ -53,7 +55,7 @@ docker compose logs -f
 コンテナを挟まず直接動かすなら:
 
 ```sh
-set -a; . ./.env; set +a
+export SLACK_BOT_TOKEN=xoxb-... SLACK_APP_TOKEN=xapp-... ANTHROPIC_API_KEY=sk-ant-...
 dotnet run --project src/Aizuchi                 # JIT
 dotnet run --project tests/Aizuchi.Tests.csproj  # テスト
 dotnet publish src/Aizuchi -c Release -o out && ./out/aizuchi   # AOT(clang が必要)
