@@ -15,12 +15,27 @@
 | コネクタ | `slack`([connectors/slack](connectors/slack/README.md)) | `CHAT_CONNECTOR` / values `connector` |
 | プロバイダ | `claude`(Claude Console の API キー) | `LLM_PROVIDER` / values `provider` |
 
+## 記憶(memory)
+
+毎回スレッドで社内の文脈を説明しなくて済むよう、ボットは **Markdown の記憶**を持つ。
+system prompt の末尾に差し込まれ、LLM 自身が道具(`memory_append` / `memory_replace`)で書き換える。
+
+- **共有**(ワークスペース全体)と **チャンネルごと** の 2 スコープ。迷ったら共有に入る
+- 「これ覚えといて」「さっきのは間違い、正しくは…」「その項目は忘れて」が普通の会話で通る。保存したら一言添えて返す
+- 手動: `@aizuchi memory` で今の中身を表示。`memory`(または `memory channel`)に続けて全文をコードブロックで送ると丸ごと置き換え
+- 上限は 1 スコープ 8,000 文字(`bot.memoryMaxChars`)。近づくと LLM が整理して書き直す
+- 置き場は `BOT_MEMORY_DIR`(k3s は PVC の `/data/memory`、compose は volume)。`off` で機能ごと無効
+- 中身は Slack の全員が読める・書ける前提。個人の秘密は入れない
+
+スレッドへの返信では、スレッドの外の **チャンネル直近 20 件**(`bot.channelContext`)も「最近の流れ」として渡す。
+複数人のスレッドでは発言に `[名前]` を前置する(Slack の `users:read` スコープが要る。無ければ ID のまま)。
+
 ## 構成
 
 ```
-src/Aizuchi.Core/     IChatConnector / ILlmProvider / IConversation / IReplyDraft と、返信の流れ本体(Bot)
+src/Aizuchi.Core/     IChatConnector / ILlmProvider / ITool / IConversation / IReplyDraft と、返信の流れ本体(Bot)、記憶(FileMemoryStore / MemoryTools / MemoryCommand)
 src/Aizuchi.Slack/    Slack コネクタ: Socket Mode、Web API、反応判定、履歴→messages、Markdown→mrkdwn
-src/Aizuchi.Claude/   Claude プロバイダ: /v1/messages のストリーミング(SSE)
+src/Aizuchi.Claude/   Claude プロバイダ: /v1/messages のストリーミング(SSE)とツール呼び出しの往復
 src/Aizuchi/          ホスト。環境変数でコネクタとプロバイダを選び、/healthz /readyz を出す
 tests/                純粋関数・JSON 形状・Bot の流れ(偽コネクタ / 偽プロバイダ)のテスト。TUnit(Microsoft.Testing.Platform)
 connectors/slack/     Slack アプリのマニフェストと手順
@@ -34,7 +49,7 @@ compose.yml           ローカル開発(genkan 経由で https://aizuchi.localh
   「どの発言に返すか」「履歴をどう `ChatMessage` にするか」「返信をどう書き換えるか(`IReplyDraft`)」をその中に閉じる。
   `src/Aizuchi/Program.cs` の辞書に 1 行、チャートの `deployment.yaml` に Secret のキーを足す
 - **プロバイダを足す**(OpenAI、Ollama …): `ILlmProvider.StreamAsync` を実装して増分テキストを `onText` に流す。
-  `stop_reason` 相当は `StopKind` に寄せる。同じく辞書に 1 行
+  `stop_reason` 相当は `StopKind` に寄せ、`LlmRequest.Tools`(JSON Schema 文字列の `ITool`)の呼び出し往復もプロバイダの中で済ませる。同じく辞書に 1 行
 - 共通ルール: **Native AOT で動くこと**。JSON は `JsonSerializerContext`(ソースジェネレータ)、正規表現は `[GeneratedRegex]`。
   リフレクション前提の SDK は使えない(公式 Anthropic C# SDK が実際にそうで、起動時に落ちる)
 
@@ -88,6 +103,9 @@ k3s の helm-controller なら `HelmChart` CR で同じことができる(`value
 | `connector` / `provider` | `slack` / `claude` | 使うコネクタとプロバイダ |
 | `bot.systemPrompt` | (空) | 既定のシステムプロンプトへの追記 |
 | `bot.maxHistory` | `50` | LLM に渡す直近メッセージ数 |
+| `bot.memoryMaxChars` | `8000` | 記憶 1 スコープの上限文字数 |
+| `bot.channelContext` | `20` | スレッド返信で参考に渡すチャンネル直近件数。0 で無効 |
+| `persistence.enabled` / `size` / `storageClass` | `true` / `1Gi` / 既定 | 記憶を置く PVC(`helm.sh/resource-policy: keep`) |
 | `claude.model` | `claude-opus-5` | モデル ID(thinking は adaptive のまま) |
 | `claude.maxTokens` | `16000` | 1 応答の上限トークン |
 | `claude.effort` | (空 = high) | `low` / `medium` / `high` / `xhigh` / `max` |
@@ -100,7 +118,7 @@ k3s の helm-controller なら `HelmChart` CR で同じことができる(`value
 | `CHAT_CONNECTOR` / `LLM_PROVIDER` | `slack` / `claude`(既定) |
 | `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` | Slack コネクタ |
 | `ANTHROPIC_API_KEY` `CLAUDE_MODEL` `CLAUDE_MAX_TOKENS` `CLAUDE_EFFORT` `CLAUDE_FALLBACKS` `ANTHROPIC_BASE_URL` | Claude プロバイダ |
-| `BOT_SYSTEM_PROMPT` `BOT_MAX_HISTORY` `BOT_UPDATE_INTERVAL_MS` | 共通 |
+| `BOT_SYSTEM_PROMPT` `BOT_MAX_HISTORY` `BOT_UPDATE_INTERVAL_MS` `BOT_MEMORY_DIR` `BOT_MEMORY_MAX_CHARS` `BOT_CHANNEL_CONTEXT` | 共通 |
 
 ## ヘルスチェック
 

@@ -82,6 +82,33 @@ public sealed class SlackApi(HttpClient http, string botToken)
         return list;
     }
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> _names = new();
+
+    /// <summary>
+    /// ユーザー ID → 表示名。users:read スコープが無ければ null(呼び出し側は ID のまま使う)。
+    /// 結果はプロセス内で覚える。
+    /// </summary>
+    public async Task<string?> UserName(string userId, CancellationToken ct)
+    {
+        if (_names.TryGetValue(userId, out var cached)) return cached;
+        string? name;
+        try
+        {
+            var res = await Get("users.info", $"user={Uri.EscapeDataString(userId)}", SlackJson.Default.UserInfoResponse, ct);
+            var u = res.User;
+            name = res.Ok ? FirstNonEmpty(u?.Profile?.DisplayName, u?.RealName, u?.Profile?.RealName, u?.Name) : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or SlackApiException)
+        {
+            name = null;
+        }
+        _names[userId] = name;
+        return name;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
     private Task<TRes> PostJson<TReq, TRes>(string method, TReq body,
         JsonTypeInfo<TReq> reqInfo, JsonTypeInfo<TRes> resInfo, CancellationToken ct) =>
         Send(() =>

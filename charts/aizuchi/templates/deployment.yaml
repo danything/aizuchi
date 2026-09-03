@@ -61,6 +61,12 @@ spec:
             {{- end }}
             - name: BOT_MAX_HISTORY
               value: {{ .Values.bot.maxHistory | quote }}
+            - name: BOT_MEMORY_DIR
+              value: {{ if .Values.persistence.enabled }}"/data/memory"{{ else }}"off"{{ end }}
+            - name: BOT_MEMORY_MAX_CHARS
+              value: {{ .Values.bot.memoryMaxChars | quote }}
+            - name: BOT_CHANNEL_CONTEXT
+              value: {{ .Values.bot.channelContext | quote }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -73,3 +79,16 @@ spec:
             initialDelaySeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      # イメージは非 root(app)で動く。PVC の root は provisioner 次第で root 所有なので、
+      # fsGroup で書けるようにする
+      securityContext:
+        fsGroup: 1654
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data
+          {{- end }}

@@ -7,14 +7,37 @@ public sealed class SlackConversation(
     SlackApi api,
     string channel,
     string? threadTs,
+    bool isDm,
     IReadOnlyList<SlackMessage> history,
     SlackEvent trigger,
     string botUserId,
-    string? botId) : IConversation
+    string? botId,
+    int channelContext) : IConversation
 {
-    public Task<IReadOnlyList<ChatMessage>> HistoryAsync(int maxMessages, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<ChatMessage>>(
-            ConversationBuilder.Build(history, botUserId, botId, trigger, maxMessages));
+    public async Task<IReadOnlyList<ChatMessage>> HistoryAsync(int maxMessages, CancellationToken ct)
+    {
+        // スレッドで複数人が話しているときだけ、発言者名を引く(users:read が無ければ ID のまま)
+        var names = await ResolveNames(history.Select(m => m.User), ct);
+
+        string? preamble = null;
+        if (threadTs is not null && !isDm && channelContext > 0)
+        {
+            var recent = await api.History(channel, channelContext + 1, ct);
+            var recentNames = await ResolveNames(recent.Select(m => m.User), ct);
+            foreach (var kv in recentNames) names.TryAdd(kv.Key, kv.Value);
+            preamble = ConversationBuilder.ChannelContext(recent, threadTs, botUserId, botId, names, channelContext);
+        }
+
+        return ConversationBuilder.Build(history, botUserId, botId, trigger, maxMessages, names, preamble);
+    }
+
+    private async Task<Dictionary<string, string>> ResolveNames(IEnumerable<string?> userIds, CancellationToken ct)
+    {
+        var names = new Dictionary<string, string>();
+        foreach (var id in userIds.Where(u => u is not null && u != botUserId).Distinct())
+            if (await api.UserName(id!, ct) is { } name) names[id!] = name;
+        return names;
+    }
 
     public async Task<IReplyDraft> BeginReplyAsync(CancellationToken ct)
     {

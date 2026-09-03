@@ -8,6 +8,9 @@ services:
     environment:
       CHAT_CONNECTOR: slack
       LLM_PROVIDER: claude
+      BOT_MEMORY_DIR: /data/memory
+    volumes:
+      - data:/data
     labels:
       caddy: aizuchi.localhost
       caddy.reverse_proxy: "{{upstreams 8080}}"
@@ -16,3 +19,6 @@ services:
 networks:
   proxy:
     external: true
+
+volumes:
+  data:

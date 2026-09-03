@@ -22,7 +22,8 @@
         "im:history",
         "channels:history",
         "groups:history",
-        "mpim:history"
+        "mpim:history",
+        "users:read"
       ]
     }
   },

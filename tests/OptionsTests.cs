@@ -45,6 +45,11 @@ public class OptionsTests
         await Assert.That(b.SystemPrompt).IsEqualTo(BotOptions.DefaultSystemPrompt);
         await Assert.That(b.MaxHistory).IsEqualTo(50);
         await Assert.That(b.UpdateInterval).IsEqualTo(TimeSpan.FromMilliseconds(1500));
+        await Assert.That(b.MemoryDir).IsEqualTo("data/memory");
+        await Assert.That(b.MemoryMaxChars).IsEqualTo(8000);
+        await Assert.That(b.ChannelContext).IsEqualTo(20);
+        await Assert.That(BotOptions.FromEnvironment(Env(("BOT_MEMORY_DIR", "off"), ("BOT_CHANNEL_CONTEXT", "0"))).MemoryDir).IsNull();
+        await Assert.That(BotOptions.FromEnvironment(Env(("BOT_CHANNEL_CONTEXT", "0"))).ChannelContext).IsEqualTo(0);
 
         var custom = BotOptions.FromEnvironment(Env(("BOT_SYSTEM_PROMPT", "常に関西弁で。"), ("BOT_MAX_HISTORY", "10"), ("BOT_UPDATE_INTERVAL_MS", "500")));
         await Assert.That(custom.SystemPrompt).EndsWith("\n\n常に関西弁で。");

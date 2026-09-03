@@ -27,6 +27,17 @@ bot:
   systemPrompt: ""
   # LLM に渡す直近メッセージ数
   maxHistory: 50
+  # 1 スコープ(共有 / チャンネル)あたりの記憶の上限文字数
+  memoryMaxChars: 8000
+  # スレッド返信のとき参考に渡す、チャンネル直近のメッセージ数。0 で無効
+  channelContext: 20
+
+# 記憶(memory)の置き場。無効にすると「覚えて」が効かなくなる
+persistence:
+  enabled: true
+  size: 1Gi
+  # 空なら既定の StorageClass
+  storageClass: ""
 
 claude:
   model: claude-opus-5

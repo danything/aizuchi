@@ -4,21 +4,36 @@ namespace Aizuchi.Core;
 
 /// <summary>
 /// 1 メッセージ = 1 返信の流れ。履歴取得 → 仮投稿 → ストリームを間引いて書き足す → 確定。
-/// どのチャットでも、どの LLM でもここは同じ。
+/// どのチャットでも、どの LLM でもここは同じ。記憶(memory)の差し込みと手動コマンドもここ。
 /// </summary>
-public sealed class Bot(ILlmProvider llm, BotOptions options, ILogger log) : IMessageHandler
+public sealed class Bot(ILlmProvider llm, BotOptions options, IMemoryStore? memory, ILogger log) : IMessageHandler
 {
     public async Task HandleAsync(IncomingMessage message, CancellationToken ct)
     {
+        if (memory is not null && MemoryCommand.TryParse(message.Text, out var command))
+        {
+            await HandleMemoryCommand(message, command, ct);
+            return;
+        }
+
         var history = await message.Conversation.HistoryAsync(options.MaxHistory, ct);
         if (history.Count == 0) return;
+
+        var system = options.SystemPrompt;
+        IReadOnlyList<ITool> tools = [];
+        if (memory is not null)
+        {
+            var snapshot = await Snapshot(message.Scope, ct);
+            system += MemoryPrompt.Section(snapshot, options.MemoryMaxChars);
+            tools = MemoryTools.For(memory, message.Scope, options.MemoryMaxChars);
+        }
 
         var draft = await message.Conversation.BeginReplyAsync(ct);
         var buffer = new System.Text.StringBuilder();
         var throttle = new Throttle(options.UpdateInterval);
         try
         {
-            var result = await llm.StreamAsync(new LlmRequest(options.SystemPrompt, history), async delta =>
+            var result = await llm.StreamAsync(new LlmRequest(system, history, tools), async delta =>
             {
                 buffer.Append(delta);
                 if (throttle.Due()) await draft.UpdateAsync(buffer.ToString(), ct);
@@ -26,8 +41,8 @@ public sealed class Bot(ILlmProvider llm, BotOptions options, ILogger log) : IMe
 
             await draft.FinishAsync(FinalText(result), ct);
             log.LogInformation(
-                "返信完了 conversation={Conversation} provider={Provider} model={Model} in={In} out={Out} stop={Stop}",
-                message.ConversationId, llm.Name, result.Model, result.InputTokens, result.OutputTokens, result.Stop);
+                "返信完了 conversation={Conversation} provider={Provider} model={Model} in={In} out={Out} tools={Tools} stop={Stop}",
+                message.ConversationId, llm.Name, result.Model, result.InputTokens, result.OutputTokens, result.ToolCalls, result.Stop);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -36,6 +51,26 @@ public sealed class Bot(ILlmProvider llm, BotOptions options, ILogger log) : IMe
             catch (Exception ex2) { log.LogWarning(ex2, "エラー表示の更新にも失敗"); }
         }
     }
+
+    private async Task HandleMemoryCommand(IncomingMessage message, MemoryCommand.Command command, CancellationToken ct)
+    {
+        var draft = await message.Conversation.BeginReplyAsync(ct);
+        if (command.Replacement is { } content)
+        {
+            if (content.Length > options.MemoryMaxChars)
+            {
+                await draft.FinishAsync($"上限 {options.MemoryMaxChars} 文字を超えています({content.Length} 文字)。", ct);
+                return;
+            }
+            var scope = command.IsChannel ? message.Scope : FileMemoryStore.Shared;
+            await memory!.WriteAsync(scope, content.Length == 0 ? "" : content + "\n", ct);
+            log.LogInformation("記憶を手動で置き換え scope={Scope} chars={Chars}", command.IsChannel ? "channel" : "shared", content.Length);
+        }
+        await draft.FinishAsync(MemoryCommand.Render(await Snapshot(message.Scope, ct), options.MemoryMaxChars), ct);
+    }
+
+    private async Task<MemorySnapshot> Snapshot(string scope, CancellationToken ct) =>
+        new(await memory!.ReadAsync(FileMemoryStore.Shared, ct), await memory.ReadAsync(scope, ct));
 
     /// <summary>確定本文。拒絶・途中切れはその旨を添える</summary>
     public static string FinalText(LlmResult result)

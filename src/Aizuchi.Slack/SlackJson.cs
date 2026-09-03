@@ -13,6 +13,7 @@ namespace Aizuchi.Slack;
 [JsonSerializable(typeof(UpdateMessageRequest))]
 [JsonSerializable(typeof(PostMessageResponse))]
 [JsonSerializable(typeof(MessagesResponse))]
+[JsonSerializable(typeof(UserInfoResponse))]
 public sealed partial class SlackJson : JsonSerializerContext;
 
 /// <summary>Socket Mode の封筒。type は hello / events_api / disconnect など</summary>
@@ -102,4 +103,25 @@ public sealed class SlackMessage
     public string? Text { get; set; }
     public string? Ts { get; set; }
     public string? ThreadTs { get; set; }
+}
+
+public sealed class UserInfoResponse
+{
+    public bool Ok { get; set; }
+    public SlackUser? User { get; set; }
+    public string? Error { get; set; }
+}
+
+public sealed class SlackUser
+{
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+    public string? RealName { get; set; }
+    public SlackProfile? Profile { get; set; }
+}
+
+public sealed class SlackProfile
+{
+    public string? DisplayName { get; set; }
+    public string? RealName { get; set; }
 }

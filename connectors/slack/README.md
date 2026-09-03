@@ -21,7 +21,10 @@ Socket Mode で動くので公開 URL は要らない。
 | `app_mentions:read` | `@aizuchi` を受け取る |
 | `chat:write` | 返信と途中経過の書き換え |
 | `im:history` | DM の本文と履歴 |
-| `channels:history` / `groups:history` / `mpim:history` | ボットが参加しているスレッドの追従と履歴 |
+| `channels:history` / `groups:history` / `mpim:history` | ボットが参加しているスレッドの追従と履歴、チャンネル直近の流れ |
+| `users:read` | 複数人のスレッドで発言者名を引く(無くても動く。ID のままになるだけ) |
+
+スコープを後から足したときは **Install App → Reinstall to Workspace** が要る(トークンは変わらない)。
 
 ## 反応する条件
 

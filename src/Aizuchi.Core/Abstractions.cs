@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Aizuchi.Core;
 
 /// <summary>LLM に渡す 1 発言。Role は "user" か "assistant"</summary>
@@ -13,16 +15,35 @@ public enum StopKind
     Refused,
 }
 
-public sealed record LlmRequest(string SystemPrompt, IReadOnlyList<ChatMessage> Messages);
+/// <summary>LLM から呼べる道具。スキーマは JSON Schema の文字列で持つ(AOT でリフレクションを避ける)</summary>
+public interface ITool
+{
+    string Name { get; }
+    string Description { get; }
+    /// <summary>input の JSON Schema(オブジェクト)</summary>
+    string InputSchemaJson { get; }
+    Task<ToolResult> InvokeAsync(JsonElement input, CancellationToken ct);
+}
+
+public sealed record ToolResult(string Content, bool IsError = false);
+
+public sealed record LlmRequest(
+    string SystemPrompt,
+    IReadOnlyList<ChatMessage> Messages,
+    IReadOnlyList<ITool> Tools);
 
 public sealed record LlmResult(
     string Text,
     StopKind Stop,
     string? Model,
     long InputTokens,
-    long OutputTokens);
+    long OutputTokens,
+    int ToolCalls = 0);
 
-/// <summary>Claude / OpenAI / ローカル LLM などの差し替え点。テキストをストリーミングで返す</summary>
+/// <summary>
+/// Claude / OpenAI / ローカル LLM などの差し替え点。テキストをストリーミングで返す。
+/// ツールが渡されたら、呼び出し → 結果を返す → 続きを生成、の往復もプロバイダの中で済ませる。
+/// </summary>
 public interface ILlmProvider
 {
     string Name { get; }
@@ -49,9 +70,13 @@ public interface IMessageHandler
 }
 
 /// <summary>コネクタが「これには返す」と判定したメッセージ</summary>
+/// <param name="ConversationId">ログ用の会話キー(例: C123:1700000000.000100)</param>
+/// <param name="Scope">チャンネル単位の記憶を分けるキー(例: Slack のチャンネル ID)</param>
+/// <param name="Text">発火元の本文。メンション除去・エンティティ復元済み</param>
 public sealed record IncomingMessage(
-    /// <summary>ログ用の会話キー(例: C123:1700000000.000100)</summary>
     string ConversationId,
+    string Scope,
+    string Text,
     IConversation Conversation);
 
 /// <summary>返信先の会話。履歴の取り出しと返信の出し方はコネクタが知っている</summary>

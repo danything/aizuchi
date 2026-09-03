@@ -3,11 +3,11 @@ using Aizuchi.Core;
 using Aizuchi.Slack;
 
 // コネクタとプロバイダは環境変数で選ぶ。増えたらここに 1 行足す
-var connectors = new Dictionary<string, Func<Func<string, string?>, ILogger, IChatConnector>>(StringComparer.OrdinalIgnoreCase)
+var connectors = new Dictionary<string, Func<Func<string, string?>, BotOptions, ILogger, IChatConnector>>(StringComparer.OrdinalIgnoreCase)
 {
-    ["slack"] = (env, log) => new SlackConnector(
+    ["slack"] = (env, bot, log) => new SlackConnector(
         new SlackApi(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }, SlackOptions.FromEnvironment(env).BotToken),
-        SlackOptions.FromEnvironment(env), log),
+        SlackOptions.FromEnvironment(env), bot.ChannelContext, log),
 };
 var providers = new Dictionary<string, Func<Func<string, string?>, ILlmProvider>>(StringComparer.OrdinalIgnoreCase)
 {
@@ -33,9 +33,9 @@ try
         throw new ConfigException($"CHAT_CONNECTOR={connectorName} は未対応です。使えるもの: {string.Join(", ", connectors.Keys)}");
     if (!providers.TryGetValue(providerName, out var makeProvider))
         throw new ConfigException($"LLM_PROVIDER={providerName} は未対応です。使えるもの: {string.Join(", ", providers.Keys)}");
-    connector = makeConnector(env, log);
-    provider = makeProvider(env);
     options = BotOptions.FromEnvironment(env);
+    connector = makeConnector(env, options, log);
+    provider = makeProvider(env);
 }
 catch (ConfigException ex)
 {
@@ -43,10 +43,25 @@ catch (ConfigException ex)
     return 1;
 }
 
-log.LogInformation("aizuchi 起動: connector={Connector} provider={Provider} max_history={MaxHistory}",
-    connector.Name, provider.Name, options.MaxHistory);
+IMemoryStore? memory = null;
+if (options.MemoryDir is { } memoryDir)
+{
+    try
+    {
+        Directory.CreateDirectory(memoryDir);
+        memory = new FileMemoryStore(memoryDir);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"記憶の置き場 {memoryDir} を作れません({ex.Message})。BOT_MEMORY_DIR=off で無効にできます。");
+        return 1;
+    }
+}
 
-var bot = new Bot(provider, options, log);
+log.LogInformation("aizuchi 起動: connector={Connector} provider={Provider} max_history={MaxHistory} memory={Memory} channel_context={ChannelContext}",
+    connector.Name, provider.Name, options.MaxHistory, options.MemoryDir ?? "off", options.ChannelContext);
+
+var bot = new Bot(provider, options, memory, log);
 app.MapGet("/healthz", () => Results.Text("ok"));
 app.MapGet("/readyz", () => connector.Ready ? Results.Text("ok") : Results.StatusCode(503));
 

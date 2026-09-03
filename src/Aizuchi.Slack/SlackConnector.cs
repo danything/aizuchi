@@ -7,7 +7,7 @@ namespace Aizuchi.Slack;
 /// Slack コネクタ。Socket Mode で受けたイベントのうち返すべきものだけを IncomingMessage にして渡す。
 /// 反応条件・重複排除・スレッド追従の判定はここに閉じる。
 /// </summary>
-public sealed class SlackConnector(SlackApi api, SlackOptions options, ILogger log) : IChatConnector
+public sealed class SlackConnector(SlackApi api, SlackOptions options, int channelContext, ILogger log) : IChatConnector
 {
     private readonly RecentKeys _seen = new(2000);
     private SocketModeClient? _socket;
@@ -48,7 +48,8 @@ public sealed class SlackConnector(SlackApi api, SlackOptions options, ILogger l
             !history.Any(m => m.User == _botUserId || (_botId is not null && m.BotId == _botId)))
             return;
 
-        var conversation = new SlackConversation(api, channel, threadTs, history, ev, _botUserId, _botId);
-        await handler.HandleAsync(new IncomingMessage($"{channel}:{threadTs ?? ev.Ts}", conversation), ct);
+        var conversation = new SlackConversation(api, channel, threadTs, isDm, history, ev, _botUserId, _botId, channelContext);
+        var text = SlackText.StripMention(ev.Text, _botUserId);
+        await handler.HandleAsync(new IncomingMessage($"{channel}:{threadTs ?? ev.Ts}", channel, text, conversation), ct);
     }
 }
