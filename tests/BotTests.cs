@@ -41,7 +41,7 @@ public class BotTests
     {
         var provider = new FakeProvider(["こん", "にちは"]);
         var conv = new FakeConversation(History);
-        await new Bot(provider, Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", conv), CancellationToken.None);
+        await new Bot(provider, Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", conv), TestContext.Current!.Execution.CancellationToken);
 
         await Assert.That(provider.LastRequest!.SystemPrompt).IsEqualTo("sys");
         await Assert.That(provider.LastRequest.Messages).IsEquivalentTo(History, CollectionOrdering.Matching);
@@ -54,7 +54,7 @@ public class BotTests
     public async Task 履歴が空なら何もしない()
     {
         var conv = new FakeConversation([]);
-        await new Bot(new FakeProvider(["x"]), Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", conv), CancellationToken.None);
+        await new Bot(new FakeProvider(["x"]), Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", conv), TestContext.Current!.Execution.CancellationToken);
         await Assert.That(conv.Began).IsFalse();
     }
 
@@ -62,11 +62,11 @@ public class BotTests
     public async Task 途中切れと拒絶は文言を添える()
     {
         var truncated = new FakeConversation(History);
-        await new Bot(new FakeProvider(["長い"], StopKind.Truncated), Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", truncated), CancellationToken.None);
+        await new Bot(new FakeProvider(["長い"], StopKind.Truncated), Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", truncated), TestContext.Current!.Execution.CancellationToken);
         await Assert.That(truncated.Final).StartsWith("長い\n\n_(出力上限");
 
         var refused = new FakeConversation(History);
-        await new Bot(new FakeProvider(["途中"], StopKind.Refused), Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", refused), CancellationToken.None);
+        await new Bot(new FakeProvider(["途中"], StopKind.Refused), Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", refused), TestContext.Current!.Execution.CancellationToken);
         await Assert.That(refused.Final).IsEqualTo("この依頼には応答できませんでした。");
     }
 
@@ -75,7 +75,7 @@ public class BotTests
     {
         var conv = new FakeConversation(History);
         var provider = new FakeProvider(["a"], fail: new LlmException("Claude API HTTP 529", "overloaded"));
-        await new Bot(provider, Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", conv), CancellationToken.None);
+        await new Bot(provider, Options, NullLogger.Instance).HandleAsync(new IncomingMessage("c", conv), TestContext.Current!.Execution.CancellationToken);
         await Assert.That(conv.Final).IsNull();
         await Assert.That(conv.Failure).IsEqualTo("Claude API HTTP 529");
     }
