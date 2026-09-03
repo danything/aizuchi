@@ -16,6 +16,8 @@ var providers = new Dictionary<string, Func<Func<string, string?>, ILlmProvider>
 };
 
 var builder = WebApplication.CreateSlimBuilder(args);
+// /healthz /readyz のプローブが info で毎回出て本体のログが埋もれるので、ASP.NET 側は警告以上だけ
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 var app = builder.Build();
 var log = app.Logger;
 
