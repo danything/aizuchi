@@ -1,0 +1,19 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      # xUnit v3 はテストプロジェクト自体が実行ファイル
+      - run: dotnet run --project tests/SlackClaudeBot.Tests.csproj
+      - name: Helm lint
+        run: helm lint charts/slack-claude-bot --set externalSecret.enabled=true --set externalSecret.path=/x/y
