@@ -8,7 +8,8 @@ Socket Mode で動くので公開 URL は要らない。
 2. 貼り付け画面は **JSON タブが既定**。[`manifest.json`](manifest.json) をそのまま貼る(YAML タブに切り替えれば YAML でも可)
 3. **Basic Information → App-Level Tokens → Generate** で `connections:write` のトークンを作る → `SLACK_APP_TOKEN`(xapp-)
 4. **Install App → Install to Workspace** → Bot User OAuth Token → `SLACK_BOT_TOKEN`(xoxb-)
-5. 使いたいチャンネルで `/invite @aizuchi`。DM はそのまま話しかければよい
+5. **Basic Information → Display Information → App icon** に [`icon.png`](icon.png)(1024×1024)を上げる。マニフェストではアイコンを指定できないので手動
+6. 使いたいチャンネルで `/invite @aizuchi`。DM はそのまま話しかければよい
 
 同じアプリを別のワークスペースでも使いたければ、そのワークスペースで 1〜4 を繰り返して aizuchi をもう 1 つ立てる
 (Public Distribution にすると OAuth コールバックの実装が必要になるので、自分のワークスペースだけならこちらが早い)。
