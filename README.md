@@ -22,7 +22,7 @@ src/Aizuchi.Core/     IChatConnector / ILlmProvider / IConversation / IReplyDraf
 src/Aizuchi.Slack/    Slack コネクタ: Socket Mode、Web API、反応判定、履歴→messages、Markdown→mrkdwn
 src/Aizuchi.Claude/   Claude プロバイダ: /v1/messages のストリーミング(SSE)
 src/Aizuchi/          ホスト。環境変数でコネクタとプロバイダを選び、/healthz /readyz を出す
-tests/                純粋関数・JSON 形状・Bot の流れ(偽コネクタ / 偽プロバイダ)のテスト。xUnit v3 + Microsoft.Testing.Platform
+tests/                純粋関数・JSON 形状・Bot の流れ(偽コネクタ / 偽プロバイダ)のテスト。TUnit(Microsoft.Testing.Platform)
 connectors/slack/     Slack アプリのマニフェストと手順
 charts/aizuchi/       Deployment + 任意の ExternalSecret
 compose.yml           ローカル開発(genkan 経由で https://aizuchi.localhost)。認証情報は compose.override.yml

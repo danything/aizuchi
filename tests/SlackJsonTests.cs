@@ -1,10 +1,11 @@
 using System.Text.Json;
 using Aizuchi.Slack;
+using System.Threading.Tasks;
 
 public class SlackJsonTests
 {
-    [Fact]
-    public void Socket_Modeの封筒を読める()
+    [Test]
+    public async Task Socket_Modeの封筒を読める()
     {
         const string json = """
             {"envelope_id":"env-1","type":"events_api","accepts_response_payload":false,
@@ -13,31 +14,31 @@ public class SlackJsonTests
                         "text":"hello","ts":"1.000","thread_ts":"0.900"}}}
             """;
         var env = JsonSerializer.Deserialize(json, SlackJson.Default.Envelope)!;
-        Assert.Equal("events_api", env.Type);
-        Assert.Equal("env-1", env.EnvelopeId);
-        Assert.Equal("Ev1", env.Payload!.EventId);
+        await Assert.That(env.Type).IsEqualTo("events_api");
+        await Assert.That(env.EnvelopeId).IsEqualTo("env-1");
+        await Assert.That(env.Payload!.EventId).IsEqualTo("Ev1");
         var ev = env.Payload.Event!;
-        Assert.Equal("im", ev.ChannelType);
-        Assert.Equal("0.900", ev.ThreadTs);
-        Assert.Equal("hello", ev.Text);
+        await Assert.That(ev.ChannelType).IsEqualTo("im");
+        await Assert.That(ev.ThreadTs).IsEqualTo("0.900");
+        await Assert.That(ev.Text).IsEqualTo("hello");
     }
 
-    [Fact]
-    public void disconnectの理由を読める()
+    [Test]
+    public async Task disconnectの理由を読める()
     {
         var env = JsonSerializer.Deserialize("""{"type":"disconnect","reason":"refresh_requested"}""", SlackJson.Default.Envelope)!;
-        Assert.Equal("disconnect", env.Type);
-        Assert.Equal("refresh_requested", env.Reason);
-        Assert.Null(env.EnvelopeId);
+        await Assert.That(env.Type).IsEqualTo("disconnect");
+        await Assert.That(env.Reason).IsEqualTo("refresh_requested");
+        await Assert.That(env.EnvelopeId).IsNull();
     }
 
-    [Fact]
-    public void ackとpostMessageはsnake_caseでnullを省く()
+    [Test]
+    public async Task ackとpostMessageはsnake_caseでnullを省く()
     {
-        Assert.Equal("""{"envelope_id":"x"}""", JsonSerializer.Serialize(new Ack { EnvelopeId = "x" }, SlackJson.Default.Ack));
+        await Assert.That(JsonSerializer.Serialize(new Ack { EnvelopeId = "x" }, SlackJson.Default.Ack)).IsEqualTo("""{"envelope_id":"x"}""");
         var post = JsonSerializer.Serialize(new PostMessageRequest { Channel = "C1", Text = "t" }, SlackJson.Default.PostMessageRequest);
-        Assert.Equal("""{"channel":"C1","text":"t"}""", post);
+        await Assert.That(post).IsEqualTo("""{"channel":"C1","text":"t"}""");
         var threaded = JsonSerializer.Serialize(new PostMessageRequest { Channel = "C1", Text = "t", ThreadTs = "1.0" }, SlackJson.Default.PostMessageRequest);
-        Assert.Contains("\"thread_ts\":\"1.0\"", threaded);
+        await Assert.That(threaded).Contains("\"thread_ts\":\"1.0\"");
     }
 }

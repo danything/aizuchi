@@ -1,60 +1,61 @@
 using Aizuchi.Claude;
 using Aizuchi.Core;
 using Aizuchi.Slack;
+using System.Threading.Tasks;
 
 public class OptionsTests
 {
     private static Func<string, string?> Env(params (string, string)[] pairs) =>
         name => pairs.FirstOrDefault(p => p.Item1 == name).Item2;
 
-    [Fact]
-    public void 必須が欠けると名前を挙げて失敗()
+    [Test]
+    public async Task 必須が欠けると名前を挙げて失敗()
     {
         var ex = Assert.Throws<ConfigException>(() => SlackOptions.FromEnvironment(Env(("SLACK_BOT_TOKEN", "xoxb"))));
-        Assert.Contains("SLACK_APP_TOKEN", ex.Message);
-        Assert.Contains("ANTHROPIC_API_KEY", Assert.Throws<ConfigException>(() => ClaudeOptions.FromEnvironment(Env())).Message);
+        await Assert.That(ex.Message).Contains("SLACK_APP_TOKEN");
+        await Assert.That(Assert.Throws<ConfigException>(() => ClaudeOptions.FromEnvironment(Env())).Message).Contains("ANTHROPIC_API_KEY");
     }
 
-    [Fact]
-    public void Claudeの既定値()
+    [Test]
+    public async Task Claudeの既定値()
     {
         var c = ClaudeOptions.FromEnvironment(Env(("ANTHROPIC_API_KEY", "k")));
-        Assert.Equal("claude-opus-5", c.Model);
-        Assert.Equal(16_000, c.MaxTokens);
-        Assert.Null(c.Effort);
-        Assert.True(c.Fallbacks);
-        Assert.Equal("https://api.anthropic.com", c.BaseUrl);
+        await Assert.That(c.Model).IsEqualTo("claude-opus-5");
+        await Assert.That(c.MaxTokens).IsEqualTo(16_000);
+        await Assert.That(c.Effort).IsNull();
+        await Assert.That(c.Fallbacks).IsTrue();
+        await Assert.That(c.BaseUrl).IsEqualTo("https://api.anthropic.com");
     }
 
-    [Fact]
-    public void Claudeの上書き()
+    [Test]
+    public async Task Claudeの上書き()
     {
         var c = ClaudeOptions.FromEnvironment(Env(("ANTHROPIC_API_KEY", "k"),
             ("CLAUDE_MODEL", "claude-sonnet-5"), ("CLAUDE_EFFORT", "low"), ("CLAUDE_FALLBACKS", "off"), ("CLAUDE_MAX_TOKENS", "4096")));
-        Assert.Equal("claude-sonnet-5", c.Model);
-        Assert.Equal("low", c.Effort);
-        Assert.False(c.Fallbacks);
-        Assert.Equal(4096, c.MaxTokens);
+        await Assert.That(c.Model).IsEqualTo("claude-sonnet-5");
+        await Assert.That(c.Effort).IsEqualTo("low");
+        await Assert.That(c.Fallbacks).IsFalse();
+        await Assert.That(c.MaxTokens).IsEqualTo(4096);
     }
 
-    [Fact]
-    public void Botの既定値と追加プロンプト()
+    [Test]
+    public async Task Botの既定値と追加プロンプト()
     {
         var b = BotOptions.FromEnvironment(Env());
-        Assert.Equal(BotOptions.DefaultSystemPrompt, b.SystemPrompt);
-        Assert.Equal(50, b.MaxHistory);
-        Assert.Equal(TimeSpan.FromMilliseconds(1500), b.UpdateInterval);
+        await Assert.That(b.SystemPrompt).IsEqualTo(BotOptions.DefaultSystemPrompt);
+        await Assert.That(b.MaxHistory).IsEqualTo(50);
+        await Assert.That(b.UpdateInterval).IsEqualTo(TimeSpan.FromMilliseconds(1500));
 
         var custom = BotOptions.FromEnvironment(Env(("BOT_SYSTEM_PROMPT", "常に関西弁で。"), ("BOT_MAX_HISTORY", "10"), ("BOT_UPDATE_INTERVAL_MS", "500")));
-        Assert.EndsWith("\n\n常に関西弁で。", custom.SystemPrompt);
-        Assert.Equal(10, custom.MaxHistory);
-        Assert.Equal(TimeSpan.FromMilliseconds(500), custom.UpdateInterval);
+        await Assert.That(custom.SystemPrompt).EndsWith("\n\n常に関西弁で。");
+        await Assert.That(custom.MaxHistory).IsEqualTo(10);
+        await Assert.That(custom.UpdateInterval).IsEqualTo(TimeSpan.FromMilliseconds(500));
     }
 
-    [Fact]
-    public void 数値が壊れていたら失敗()
+    [Test]
+    public async Task 数値が壊れていたら失敗()
     {
         var ex = Assert.Throws<ConfigException>(() => BotOptions.FromEnvironment(Env(("BOT_MAX_HISTORY", "たくさん"))));
-        Assert.Contains("BOT_MAX_HISTORY", ex.Message);
+        await Assert.That(ex.Message).Contains("BOT_MAX_HISTORY");
     }
 }

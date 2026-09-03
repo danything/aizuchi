@@ -1,5 +1,7 @@
+using TUnit.Assertions.Enums;
 using Aizuchi.Core;
 using Aizuchi.Slack;
+using System.Threading.Tasks;
 
 public class ConversationBuilderTests
 {
@@ -12,8 +14,8 @@ public class ConversationBuilderTests
     private static SlackEvent Trigger(string text, string ts) =>
         new() { Type = "message", User = "U1", Text = text, Ts = ts, Channel = "C1" };
 
-    [Fact]
-    public void 自分の発言はassistant_他はuserになりメンションは剥がれる()
+    [Test]
+    public async Task 自分の発言はassistant_他はuserになりメンションは剥がれる()
     {
         var history = new[]
         {
@@ -22,22 +24,20 @@ public class ConversationBuilderTests
             Msg("U1", "調子は?", "3"),
         };
         var result = ConversationBuilder.Build(history, Bot, BotId, Trigger("調子は?", "3"), 50);
-        Assert.Equal(
-            [new("user", "こんにちは"), new("assistant", "こんにちは!"), new("user", "調子は?")],
-            result);
+        await Assert.That(result).IsEquivalentTo(new ChatMessage[] { new("user", "こんにちは"), new("assistant", "こんにちは!"), new("user", "調子は?") }, CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void 発火元が履歴に無ければ末尾に足す()
+    [Test]
+    public async Task 発火元が履歴に無ければ末尾に足す()
     {
         var history = new[] { Msg("U1", "a", "1"), Msg(Bot, "b", "2") };
         var result = ConversationBuilder.Build(history, Bot, BotId, Trigger("<@UBOT> c", "3"), 50);
-        Assert.Equal("c", result[^1].Content);
-        Assert.Equal("user", result[^1].Role);
+        await Assert.That(result[^1].Content).IsEqualTo("c");
+        await Assert.That(result[^1].Role).IsEqualTo("user");
     }
 
-    [Fact]
-    public void 先頭のassistantとシステム系サブタイプと仮メッセージは捨てる()
+    [Test]
+    public async Task 先頭のassistantとシステム系サブタイプと仮メッセージは捨てる()
     {
         var history = new[]
         {
@@ -47,19 +47,19 @@ public class ConversationBuilderTests
             Msg(Bot, ConversationBuilder.Placeholder, "3"),
         };
         var result = ConversationBuilder.Build(history, Bot, BotId, Trigger("質問", "2"), 50);
-        Assert.Equal([new("user", "質問")], result);
+        await Assert.That(result).IsEquivalentTo(new ChatMessage[] { new("user", "質問") }, CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void 同じロールの連続は畳まれる()
+    [Test]
+    public async Task 同じロールの連続は畳まれる()
     {
         var history = new[] { Msg("U1", "a", "1"), Msg("U2", "b", "2"), Msg(Bot, "c", "3"), Msg("U1", "d", "4") };
         var result = ConversationBuilder.Build(history, Bot, BotId, Trigger("d", "4"), 50);
-        Assert.Equal([new("user", "a\n\nb"), new("assistant", "c"), new("user", "d")], result);
+        await Assert.That(result).IsEquivalentTo(new ChatMessage[] { new("user", "a\n\nb"), new("assistant", "c"), new("user", "d") }, CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void 上限を超えたら古い方から切りuser始まりを保つ()
+    [Test]
+    public async Task 上限を超えたら古い方から切りuser始まりを保つ()
     {
         var history = new[]
         {
@@ -68,6 +68,6 @@ public class ConversationBuilderTests
             Msg("U1", "q3", "5"),
         };
         var result = ConversationBuilder.Build(history, Bot, BotId, Trigger("q3", "5"), 2);
-        Assert.Equal([new("user", "q3")], result);
+        await Assert.That(result).IsEquivalentTo(new ChatMessage[] { new("user", "q3") }, CollectionOrdering.Matching);
     }
 }

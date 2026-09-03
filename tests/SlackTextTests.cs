@@ -1,38 +1,40 @@
+using TUnit.Assertions.Enums;
 using Aizuchi.Slack;
+using System.Threading.Tasks;
 
 public class SlackTextTests
 {
-    [Fact]
-    public void メンションを剥がしてエンティティを戻す()
+    [Test]
+    public async Task メンションを剥がしてエンティティを戻す()
     {
-        Assert.Equal("a < b を教えて", SlackText.StripMention("<@U123> a &lt; b を教えて", "U123"));
-        Assert.Equal("こんにちは", SlackText.StripMention("こんにちは <@U123|bot>", "U123"));
-        Assert.Equal("<@U999> へ", SlackText.StripMention("<@U999> へ <@U123>", "U123"));
+        await Assert.That(SlackText.StripMention("<@U123> a &lt; b を教えて", "U123")).IsEqualTo("a < b を教えて");
+        await Assert.That(SlackText.StripMention("こんにちは <@U123|bot>", "U123")).IsEqualTo("こんにちは");
+        await Assert.That(SlackText.StripMention("<@U999> へ <@U123>", "U123")).IsEqualTo("<@U999> へ");
     }
 
-    [Fact]
-    public void メンション判定()
+    [Test]
+    public async Task メンション判定()
     {
-        Assert.True(SlackText.MentionsBot("hey <@U123>", "U123"));
-        Assert.True(SlackText.MentionsBot("<@U123|claude> hi", "U123"));
-        Assert.False(SlackText.MentionsBot("<@U1234>", "U123"));
-        Assert.False(SlackText.MentionsBot(null, "U123"));
+        await Assert.That(SlackText.MentionsBot("hey <@U123>", "U123")).IsTrue();
+        await Assert.That(SlackText.MentionsBot("<@U123|claude> hi", "U123")).IsTrue();
+        await Assert.That(SlackText.MentionsBot("<@U1234>", "U123")).IsFalse();
+        await Assert.That(SlackText.MentionsBot(null, "U123")).IsFalse();
     }
 
-    [Fact]
-    public void 分割は改行位置で行われ短ければそのまま()
+    [Test]
+    public async Task 分割は改行位置で行われ短ければそのまま()
     {
-        Assert.Equal(["short"], SlackText.Split("short", 10));
+        await Assert.That(SlackText.Split("short", 10)).IsEquivalentTo(["short"], CollectionOrdering.Matching);
         var parts = SlackText.Split("aaaa\nbbbb\ncccc", 10);
-        Assert.Equal(["aaaa\nbbbb", "cccc"], parts);
+        await Assert.That(parts).IsEquivalentTo(["aaaa\nbbbb", "cccc"], CollectionOrdering.Matching);
     }
 
-    [Fact]
-    public void 改行が無ければ固定長で切る()
+    [Test]
+    public async Task 改行が無ければ固定長で切る()
     {
         var parts = SlackText.Split(new string('x', 25), 10);
-        Assert.Equal(3, parts.Count);
-        Assert.All(parts, p => Assert.True(p.Length <= 10));
-        Assert.Equal(25, parts.Sum(p => p.Length));
+        await Assert.That(parts.Count).IsEqualTo(3);
+        await Assert.That(parts).All(p => p.Length <= 10);
+        await Assert.That(parts.Sum(p => p.Length)).IsEqualTo(25);
     }
 }

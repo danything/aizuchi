@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
-      # xUnit v3 はテストプロジェクト自体が実行ファイル
+      # TUnit はテストプロジェクト自体が実行ファイル
       - run: dotnet run --project tests/Aizuchi.Tests.csproj
       - name: Helm lint
         run: helm lint charts/aizuchi --set externalSecret.enabled=true --set externalSecret.path=/x/y
