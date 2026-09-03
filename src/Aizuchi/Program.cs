@@ -1,6 +1,8 @@
 using Aizuchi.Claude;
 using Aizuchi.Core;
+using Aizuchi.GitHub;
 using Aizuchi.Slack;
+using System.Security.Cryptography;
 
 // コネクタとプロバイダは環境変数で選ぶ。増えたらここに 1 行足す
 var connectors = new Dictionary<string, Func<Func<string, string?>, BotOptions, ILogger, IChatConnector>>(StringComparer.OrdinalIgnoreCase)
@@ -20,10 +22,12 @@ var builder = WebApplication.CreateSlimBuilder(args);
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 var app = builder.Build();
 var log = app.Logger;
+var stopping = app.Lifetime.ApplicationStopping;
 
 IChatConnector connector;
 ILlmProvider provider;
 BotOptions options;
+GitHubOptions? github;
 try
 {
     Func<string, string?> env = Environment.GetEnvironmentVariable;
@@ -36,6 +40,7 @@ try
     options = BotOptions.FromEnvironment(env);
     connector = makeConnector(env, options, log);
     provider = makeProvider(env);
+    github = GitHubOptions.FromEnvironment(env);
 }
 catch (ConfigException ex)
 {
@@ -61,11 +66,31 @@ if (options.MemoryDir is { } memoryDir)
 log.LogInformation("aizuchi 起動: connector={Connector} provider={Provider} max_history={MaxHistory} memory={Memory} channel_context={ChannelContext}",
     connector.Name, provider.Name, options.MaxHistory, options.MemoryDir ?? "off", options.ChannelContext);
 
-var bot = new Bot(provider, options, memory, log);
+// 道具パック。GitHub は設定があるときだけ(起動時に installation を引いて読める owner を確定する)
+var packs = new List<IToolPack>();
+if (github is not null)
+{
+    var ghHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+    IGitHubAuth auth = github.Token is { } pat
+        ? new TokenAuth(ghHttp, pat, github.Owners)
+        : new AppAuth(ghHttp, github.AppId!, github.PrivateKeyPem!, github.Owners);
+    try
+    {
+        var pack = await GitHubToolPack.CreateAsync(new GitHubClient(ghHttp, auth), stopping);
+        packs.Add(pack);
+        log.LogInformation("GitHub: {Auth} で {Owners} を読める", github.Token is null ? "App" : "PAT", string.Join(", ", (await auth.OwnersAsync(stopping)).Keys));
+    }
+    catch (Exception ex) when (ex is GitHubException or HttpRequestException or CryptographicException)
+    {
+        Console.Error.WriteLine($"GitHub の認証に失敗しました: {ex.Message}");
+        return 1;
+    }
+}
+
+var bot = new Bot(provider, options, memory, packs, log);
 app.MapGet("/healthz", () => Results.Text("ok"));
 app.MapGet("/readyz", () => connector.Ready ? Results.Text("ok") : Results.StatusCode(503));
 
-var stopping = app.Lifetime.ApplicationStopping;
 var run = Task.Run(async () =>
 {
     try

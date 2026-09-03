@@ -47,6 +47,16 @@ claude:
   # 拒絶時にサーバー側で別モデルへフォールバックする beta。"off" で無効
   fallbacks: default
 
+# GitHub を読む道具(読み取り専用)。auth は app か token
+github:
+  enabled: false
+  auth: app
+  # auth: app のとき。秘密鍵は existingSecret のキー github-app-private-key(PEM 全文)
+  appId: ""
+  # auth: token のとき。PAT は existingSecret のキー github-token。読ませる owner は必須
+  # auth: app では省略可(インストール先が全部読める)。絞るなら書く
+  owners: ""      # 例: danything,5ym
+
 # そのまま container.env に足す
 extraEnv: []
 

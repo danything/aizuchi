@@ -12,5 +12,6 @@
     <ProjectReference Include="../Aizuchi.Core/Aizuchi.Core.csproj" />
     <ProjectReference Include="../Aizuchi.Slack/Aizuchi.Slack.csproj" />
     <ProjectReference Include="../Aizuchi.Claude/Aizuchi.Claude.csproj" />
+    <ProjectReference Include="../Aizuchi.GitHub/Aizuchi.GitHub.csproj" />
   </ItemGroup>
 </Project>

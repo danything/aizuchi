@@ -55,6 +55,27 @@ spec:
             - name: CLAUDE_FALLBACKS
               value: {{ .Values.claude.fallbacks | quote }}
             {{- end }}
+            {{- if .Values.github.enabled }}
+            {{- if eq .Values.github.auth "token" }}
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: github-token
+            {{- else }}
+            - name: GITHUB_APP_ID
+              value: {{ required "github.appId が必要です" .Values.github.appId | quote }}
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: github-app-private-key
+            {{- end }}
+            {{- with .Values.github.owners }}
+            - name: GITHUB_OWNERS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.bot.systemPrompt }}
             - name: BOT_SYSTEM_PROMPT
               value: {{ . | quote }}

@@ -6,7 +6,7 @@ namespace Aizuchi.Core;
 /// 1 メッセージ = 1 返信の流れ。履歴取得 → 仮投稿 → ストリームを間引いて書き足す → 確定。
 /// どのチャットでも、どの LLM でもここは同じ。記憶(memory)の差し込みと手動コマンドもここ。
 /// </summary>
-public sealed class Bot(ILlmProvider llm, BotOptions options, IMemoryStore? memory, ILogger log) : IMessageHandler
+public sealed class Bot(ILlmProvider llm, BotOptions options, IMemoryStore? memory, IReadOnlyList<IToolPack> packs, ILogger log) : IMessageHandler
 {
     public async Task HandleAsync(IncomingMessage message, CancellationToken ct)
     {
@@ -20,12 +20,18 @@ public sealed class Bot(ILlmProvider llm, BotOptions options, IMemoryStore? memo
         if (history.Count == 0) return;
 
         var system = options.SystemPrompt;
-        IReadOnlyList<ITool> tools = [];
+        var tools = new List<ITool>();
+        foreach (var pack in packs)
+        {
+            system += "\n\n" + pack.PromptSection.Trim();
+            tools.AddRange(pack.Tools);
+        }
+        // 記憶は変わりうるので末尾(キャッシュの効く安定部分の後ろ)
         if (memory is not null)
         {
             var snapshot = await Snapshot(message.Scope, ct);
             system += MemoryPrompt.Section(snapshot, options.MemoryMaxChars);
-            tools = MemoryTools.For(memory, message.Scope, options.MemoryMaxChars);
+            tools.AddRange(MemoryTools.For(memory, message.Scope, options.MemoryMaxChars));
         }
 
         var draft = await message.Conversation.BeginReplyAsync(ct);

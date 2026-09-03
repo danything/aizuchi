@@ -125,7 +125,7 @@ public class MemoryTests
         var store = new FileMemoryStore(TempDir());
         await store.WriteAsync("shared", "- 社名は danything\n", CancellationToken.None);
         var provider = new SpyProvider();
-        var bot = new Bot(provider, new BotOptions("base", 50, TimeSpan.Zero, "x", 8000, 0), store, NullLogger.Instance);
+        var bot = new Bot(provider, new BotOptions("base", 50, TimeSpan.Zero, "x", 8000, 0), store, [], NullLogger.Instance);
         var conv = new FakeConversation();
 
         await bot.HandleAsync(new IncomingMessage("c", "C1", "教えて", conv), CancellationToken.None);
@@ -141,7 +141,7 @@ public class MemoryTests
     {
         var store = new FileMemoryStore(TempDir());
         var provider = new SpyProvider();
-        var bot = new Bot(provider, new BotOptions("base", 50, TimeSpan.Zero, "x", 8000, 0), store, NullLogger.Instance);
+        var bot = new Bot(provider, new BotOptions("base", 50, TimeSpan.Zero, "x", 8000, 0), store, [], NullLogger.Instance);
 
         var show = new FakeConversation();
         await bot.HandleAsync(new IncomingMessage("c", "C1", "memory", show), CancellationToken.None);

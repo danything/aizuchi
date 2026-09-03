@@ -12,6 +12,13 @@ services:
       #CLAUDE_MAX_TOKENS: "16000"
       #CLAUDE_EFFORT: high
       #CLAUDE_FALLBACKS: default
+      # --- github (任意。App なら ID と秘密鍵、PAT なら GITHUB_TOKEN + GITHUB_OWNERS) ---
+      #GITHUB_APP_ID: "123456"
+      #GITHUB_APP_PRIVATE_KEY: |
+      #  -----BEGIN RSA PRIVATE KEY-----
+      #  ...
+      #  -----END RSA PRIVATE KEY-----
+      #GITHUB_OWNERS: danything,5ym
       # --- bot 共通 ---
       #BOT_SYSTEM_PROMPT: 常に関西弁で。
       #BOT_MAX_HISTORY: "50"

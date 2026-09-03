@@ -37,8 +37,8 @@ public sealed class ClaudeProvider(HttpClient http, ClaudeOptions opt) : ILlmPro
 {
     private const string ApiVersion = "2023-06-01";
     private const string FallbackBeta = "server-side-fallback-2026-07-01";
-    /// <summary>ツール往復の上限。記憶の追記程度なら 1〜2 回で終わる</summary>
-    private const int MaxToolRounds = 6;
+    /// <summary>ツール往復の上限。記憶の追記なら 1〜2 回、GitHub を調べる依頼で 3〜6 回ほど</summary>
+    private const int MaxToolRounds = 10;
 
     public string Name => "claude";
 

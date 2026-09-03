@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- GitHub を読む道具。GitHub App(JWT → installation token)か PAT で REST API を叩く -->
+  <ItemGroup>
+    <ProjectReference Include="../Aizuchi.Core/Aizuchi.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -27,6 +27,15 @@ public interface ITool
 
 public sealed record ToolResult(string Content, bool IsError = false);
 
+/// <summary>道具のまとまり(GitHub など)。system prompt に足す説明と道具の一覧</summary>
+public interface IToolPack
+{
+    string Name { get; }
+    /// <summary>この道具群の使い方。system prompt の末尾に足される</summary>
+    string PromptSection { get; }
+    IReadOnlyList<ITool> Tools { get; }
+}
+
 public sealed record LlmRequest(
     string SystemPrompt,
     IReadOnlyList<ChatMessage> Messages,
