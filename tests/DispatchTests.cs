@@ -1,5 +1,4 @@
-using SlackClaudeBot.Bot;
-using SlackClaudeBot.Slack;
+using Aizuchi.Slack;
 
 public class DispatchTests
 {

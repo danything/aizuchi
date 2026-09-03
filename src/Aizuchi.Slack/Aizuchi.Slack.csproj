@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Slack コネクタ。Socket Mode(ClientWebSocket)+ Web API(HttpClient) -->
+  <ItemGroup>
+    <ProjectReference Include="../Aizuchi.Core/Aizuchi.Core.csproj" />
+  </ItemGroup>
+</Project>

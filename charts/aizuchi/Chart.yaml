@@ -1,0 +1,12 @@
+apiVersion: v2
+name: aizuchi
+description: >-
+  AI chat bot that talks back in threads. Pluggable chat connectors (Slack) and
+  LLM providers (Claude). Socket Mode, so no ingress is needed. Native AOT single binary.
+type: application
+# version / appVersion は CI が上書きする(helm package --version/--app-version)
+version: 0.1.0
+appVersion: dev
+home: https://github.com/danything/aizuchi
+sources:
+  - https://github.com/danything/aizuchi

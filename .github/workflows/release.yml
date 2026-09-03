@@ -39,10 +39,10 @@ jobs:
       # appVersion = コミット SHA(イメージの既定タグになる)
       - name: Package and push chart
         run: |
-          helm package charts/slack-claude-bot \
+          helm package charts/aizuchi \
             --version "0.1.${{ github.run_number }}" \
             --app-version "${{ github.sha }}"
-          helm push "slack-claude-bot-0.1.${{ github.run_number }}.tgz" \
+          helm push "aizuchi-0.1.${{ github.run_number }}.tgz" \
             "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
         env:
           HELM_REGISTRY_CONFIG: /home/runner/.docker/config.json

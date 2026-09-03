@@ -14,6 +14,6 @@ jobs:
         with:
           dotnet-version: 10.0.x
       # xUnit v3 はテストプロジェクト自体が実行ファイル
-      - run: dotnet run --project tests/SlackClaudeBot.Tests.csproj
+      - run: dotnet run --project tests/Aizuchi.Tests.csproj
       - name: Helm lint
-        run: helm lint charts/slack-claude-bot --set externalSecret.enabled=true --set externalSecret.path=/x/y
+        run: helm lint charts/aizuchi --set externalSecret.enabled=true --set externalSecret.path=/x/y

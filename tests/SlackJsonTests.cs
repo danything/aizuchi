@@ -1,5 +1,5 @@
 using System.Text.Json;
-using SlackClaudeBot.Slack;
+using Aizuchi.Slack;
 
 public class SlackJsonTests
 {

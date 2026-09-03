@@ -1,5 +1,5 @@
-using SlackClaudeBot.Bot;
-using SlackClaudeBot.Slack;
+using Aizuchi.Core;
+using Aizuchi.Slack;
 
 public class ConversationBuilderTests
 {

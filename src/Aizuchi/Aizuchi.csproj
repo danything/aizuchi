@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>aizuchi</AssemblyName>
+    <RootNamespace>Aizuchi</RootNamespace>
+    <!-- 常駐 1 プロセスなので Native AOT。イメージが 10MB 台になる -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StripSymbols>true</StripSymbols>
+    <OptimizationPreference>Size</OptimizationPreference>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Aizuchi.Core/Aizuchi.Core.csproj" />
+    <ProjectReference Include="../Aizuchi.Slack/Aizuchi.Slack.csproj" />
+    <ProjectReference Include="../Aizuchi.Claude/Aizuchi.Claude.csproj" />
+  </ItemGroup>
+</Project>

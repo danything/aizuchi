@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Claude API(/v1/messages)プロバイダ。公式 SDK はリフレクション JSON で Native AOT では起動しないので
+       HttpClient + System.Text.Json ソースジェネレータで直接叩く -->
+  <ItemGroup>
+    <ProjectReference Include="../Aizuchi.Core/Aizuchi.Core.csproj" />
+  </ItemGroup>
+</Project>

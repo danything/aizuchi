@@ -1,0 +1,15 @@
+# ローカル開発用。danything/genkan(caddy-docker-proxy)を先に起動しておくと
+# https://aizuchi.localhost/readyz で状態が見える。ポートは公開しない(genkan の流儀)。
+services:
+  aizuchi:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    labels:
+      caddy: aizuchi.localhost
+      caddy.reverse_proxy: "{{upstreams 8080}}"
+    networks: [default, proxy]
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- xUnit v3 単体構成。テストプロジェクト自体が実行ファイルになるので、
+         Microsoft.NET.Test.Sdk も VSTest ランナーも要らない -->
+    <OutputType>Exe</OutputType>
+    <!-- 実行基盤は Microsoft.Testing.Platform(xUnit ネイティブランナーではなく)。
+         dotnet test の新しい MTP モードとも噛み合う -->
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../src/Aizuchi.Core/Aizuchi.Core.csproj" />
+    <ProjectReference Include="../src/Aizuchi.Slack/Aizuchi.Slack.csproj" />
+    <ProjectReference Include="../src/Aizuchi.Claude/Aizuchi.Claude.csproj" />
+  </ItemGroup>
+</Project>

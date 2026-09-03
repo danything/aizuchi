@@ -1,5 +1,5 @@
 using System.Text.Json;
-using SlackClaudeBot.Claude;
+using Aizuchi.Claude;
 
 public class ClaudeTests
 {

@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ホストは Native AOT。ライブラリ側でも AOT 解析を有効にして違反を早く見つける -->
+    <IsAotCompatible Condition="'$(OutputType)' != 'Exe'">true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

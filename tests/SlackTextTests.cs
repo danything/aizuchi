@@ -1,4 +1,4 @@
-using SlackClaudeBot.Bot;
+using Aizuchi.Slack;
 
 public class SlackTextTests
 {
