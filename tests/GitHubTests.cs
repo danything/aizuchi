@@ -166,4 +166,28 @@ public class GitHubTests
             await Assert.That(JsonDocument.Parse(t.InputSchemaJson).RootElement.GetProperty("type").GetString()).IsEqualTo("object");
         await Assert.That(pack.PromptSection).Contains("danything, 5ym");
     }
+
+    [Test]
+    public async Task レート上限は待ち時間を出し_ただの403はnull()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_000_000);
+        static HttpResponseMessage Res(params (string, string)[] headers)
+        {
+            var res = new HttpResponseMessage(HttpStatusCode.Forbidden);
+            foreach (var (k, v) in headers) res.Headers.TryAddWithoutValidation(k, v);
+            return res;
+        }
+
+        // 二次上限は Retry-After 秒
+        await Assert.That(GitHubClient.RateLimitWait(Res(("Retry-After", "20")), now)).IsEqualTo(TimeSpan.FromSeconds(20));
+        // 一次上限は残り 0 + リセット時刻
+        await Assert.That(GitHubClient.RateLimitWait(
+            Res(("X-RateLimit-Remaining", "0"), ("X-RateLimit-Reset", "1000045")), now)).IsEqualTo(TimeSpan.FromSeconds(45));
+        // 過ぎたリセット時刻は 0 に丸める
+        await Assert.That(GitHubClient.RateLimitWait(
+            Res(("X-RateLimit-Remaining", "0"), ("X-RateLimit-Reset", "999900")), now)).IsEqualTo(TimeSpan.Zero);
+        // 残りがあるならレート上限ではない(権限不足)
+        await Assert.That(GitHubClient.RateLimitWait(Res(("X-RateLimit-Remaining", "42")), now)).IsNull();
+        await Assert.That(GitHubClient.RateLimitWait(Res(), now)).IsNull();
+    }
 }

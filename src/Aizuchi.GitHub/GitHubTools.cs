@@ -77,6 +77,7 @@ public sealed class GitHubToolPack : IToolPack
         github_* の道具で、次の owner のリポジトリを読めます(読み取り専用): {string.Join(", ", _owners.Keys)}。
         - リポジトリ名は "owner/name" で渡す。名前が曖昧なら github_repos で確かめてから使う
         - 調べものは github_search → github_get / github_read_file の順で絞る。同じ問い合わせを繰り返さない
+        - 検索は 1 分あたり 10 回程度が上限。語を変えて何度も試すより、1 回の query を練って絞る
         - 結果は要点だけを引用し、必ずリンク(html_url)を添える
         """;
 
