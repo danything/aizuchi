@@ -83,8 +83,12 @@ public sealed class Bot(ILlmProvider llm, BotOptions options, IMemoryStore? memo
     {
         if (result.Stop == StopKind.Refused) return "この依頼には応答できませんでした。";
         var text = result.Text.Trim();
-        if (text.Length == 0) return "_(応答が空でした)_";
+        if (text.Length == 0)
+            return result.Stop == StopKind.ToolLimited
+                ? "_(調べものが上限に達して、答えをまとめられませんでした。依頼を分けて試してください)_"
+                : "_(応答が空でした)_";
         if (result.Stop == StopKind.Truncated) text += "\n\n_(出力上限に達したため途中で切れています)_";
+        if (result.Stop == StopKind.ToolLimited) text += "\n\n_(調べものが上限に達したため、ここまでで打ち切りました)_";
         return text;
     }
 }

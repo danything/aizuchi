@@ -37,8 +37,11 @@ public sealed class ClaudeProvider(HttpClient http, ClaudeOptions opt) : ILlmPro
 {
     private const string ApiVersion = "2023-06-01";
     private const string FallbackBeta = "server-side-fallback-2026-07-01";
-    /// <summary>ツール往復の上限。記憶の追記なら 1〜2 回、GitHub を調べる依頼で 3〜6 回ほど</summary>
-    private const int MaxToolRounds = 10;
+    /// <summary>
+    /// ツール往復の上限。記憶の追記なら 1〜2 回だが、GitHub を横断で調べる依頼は 10〜20 回まで伸びる。
+    /// 1 ラウンドに複数の道具が並ぶこともあるので、実際の呼び出し回数はこれより多くなる。
+    /// </summary>
+    private const int MaxToolRounds = 25;
 
     public string Name => "claude";
 
@@ -57,6 +60,7 @@ public sealed class ClaudeProvider(HttpClient http, ClaudeOptions opt) : ILlmPro
         string? model = null;
         long input = 0, output = 0;
         var toolCalls = 0;
+        var toolLimit = false;
         string? stopReason = null;
 
         for (var round = 0; ; round++)
@@ -72,8 +76,12 @@ public sealed class ClaudeProvider(HttpClient http, ClaudeOptions opt) : ILlmPro
             stopReason = turn.StopReason;
 
             if (turn.StopReason != "tool_use" || tools is null) break;
+            // 上限は投げずに打ち切る。ここまでの本文と調べた内容を捨てない
             if (round >= MaxToolRounds)
-                throw new LlmException("ツール呼び出しが多すぎます", $"{MaxToolRounds} 回を超えた");
+            {
+                toolLimit = true;
+                break;
+            }
 
             // 応答ブロック(thinking を含む)をそのまま返し、tool_result を user で続ける
             messages.Add(new MessageParam { Role = "assistant", Content = turn.Blocks });
@@ -101,7 +109,8 @@ public sealed class ClaudeProvider(HttpClient http, ClaudeOptions opt) : ILlmPro
             messages.Add(new MessageParam { Role = "user", Content = results });
         }
 
-        return new LlmResult(text.ToString(), ToStopKind(stopReason), model, input, output, toolCalls);
+        var stop = toolLimit ? StopKind.ToolLimited : ToStopKind(stopReason);
+        return new LlmResult(text.ToString(), stop, model, input, output, toolCalls);
     }
 
     private sealed record Turn(List<ContentBlockParam> Blocks, string? StopReason, string? Model, long InputTokens, long OutputTokens);

@@ -13,6 +13,8 @@ public enum StopKind
     Truncated,
     /// <summary>安全側で拒絶された</summary>
     Refused,
+    /// <summary>ツール往復の上限に達して打ち切った</summary>
+    ToolLimited,
 }
 
 /// <summary>LLM から呼べる道具。スキーマは JSON Schema の文字列で持つ(AOT でリフレクションを避ける)</summary>

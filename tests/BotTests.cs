@@ -71,6 +71,20 @@ public class BotTests
     }
 
     [Test]
+    public async Task ツール上限は途中までを残して打ち切りを添える()
+    {
+        var some = new FakeConversation(History);
+        await new Bot(new FakeProvider(["ここまで分かった"], StopKind.ToolLimited), Options, null, [], NullLogger.Instance).HandleAsync(new IncomingMessage("c", "C1", "hi", some), TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(some.Final).StartsWith("ここまで分かった\n\n_(調べもの");
+        await Assert.That(some.Failure).IsNull();
+
+        // 一言も出せずに尽きたときは、依頼を分けるよう促す
+        var empty = new FakeConversation(History);
+        await new Bot(new FakeProvider([], StopKind.ToolLimited), Options, null, [], NullLogger.Instance).HandleAsync(new IncomingMessage("c", "C1", "hi", empty), TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(empty.Final).Contains("依頼を分けて");
+    }
+
+    [Test]
     public async Task 失敗したら下書きにエラーを書く()
     {
         var conv = new FakeConversation(History);
