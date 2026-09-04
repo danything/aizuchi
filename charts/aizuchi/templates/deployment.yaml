@@ -37,6 +37,8 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
                   key: slack-app-token
+            - name: SLACK_THREAD_FOLLOWUP
+              value: {{ if .Values.slack.threadFollowUp }}"on"{{ else }}"off"{{ end }}
             {{- end }}
             {{- if eq .Values.provider "claude" }}
             - name: ANTHROPIC_API_KEY

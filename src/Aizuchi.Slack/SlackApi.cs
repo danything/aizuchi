@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization.Metadata;
+using Microsoft.Extensions.Logging;
 
 namespace Aizuchi.Slack;
 
@@ -13,7 +14,7 @@ public sealed class SlackApiException(string method, string? error)
 }
 
 /// <summary>Slack Web API の必要最小限。ボットトークン(xoxb-)で叩く</summary>
-public sealed class SlackApi(HttpClient http, string botToken)
+public sealed class SlackApi(HttpClient http, string botToken, ILogger log)
 {
     private const string Base = "https://slack.com/api/";
 
@@ -83,6 +84,7 @@ public sealed class SlackApi(HttpClient http, string botToken)
     }
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> _names = new();
+    private int _nameWarned;
 
     /// <summary>
     /// ユーザー ID → 表示名。users:read スコープが無ければ null(呼び出し側は ID のまま使う)。
@@ -97,13 +99,23 @@ public sealed class SlackApi(HttpClient http, string botToken)
             var res = await Get("users.info", $"user={Uri.EscapeDataString(userId)}", SlackJson.Default.UserInfoResponse, ct);
             var u = res.User;
             name = res.Ok ? FirstNonEmpty(u?.Profile?.DisplayName, u?.RealName, u?.Profile?.RealName, u?.Name) : null;
+            if (!res.Ok) WarnOnce(res.Error);
         }
         catch (Exception ex) when (ex is HttpRequestException or SlackApiException)
         {
+            WarnOnce(ex.Message);
             name = null;
         }
         _names[userId] = name;
         return name;
+    }
+
+    /// <summary>名前が引けない理由は 1 度だけ出す(発言のたびに鳴らさない)</summary>
+    private void WarnOnce(string? reason)
+    {
+        if (Interlocked.Exchange(ref _nameWarned, 1) != 0) return;
+        log.LogWarning("発言者名を引けません(users.info: {Reason})。ID のまま LLM に渡します。" +
+            "users:read スコープを足して Slack アプリを Reinstall すると名前で扱えます", reason ?? "(理由不明)");
     }
 
     private static string? FirstNonEmpty(params string?[] values) =>

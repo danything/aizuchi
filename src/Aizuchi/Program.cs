@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 var connectors = new Dictionary<string, Func<Func<string, string?>, BotOptions, ILogger, IChatConnector>>(StringComparer.OrdinalIgnoreCase)
 {
     ["slack"] = (env, bot, log) => new SlackConnector(
-        new SlackApi(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }, SlackOptions.FromEnvironment(env).BotToken),
+        new SlackApi(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }, SlackOptions.FromEnvironment(env).BotToken, log),
         SlackOptions.FromEnvironment(env), bot.ChannelContext, log),
 };
 var providers = new Dictionary<string, Func<Func<string, string?>, ILlmProvider>>(StringComparer.OrdinalIgnoreCase)

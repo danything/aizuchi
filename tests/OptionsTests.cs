@@ -17,6 +17,15 @@ public class OptionsTests
     }
 
     [Test]
+    public async Task スレッド追従は既定で入っていてoffで切れる()
+    {
+        var tokens = new[] { ("SLACK_BOT_TOKEN", "xoxb"), ("SLACK_APP_TOKEN", "xapp") };
+        await Assert.That(SlackOptions.FromEnvironment(Env(tokens)).ThreadFollowUp).IsTrue();
+        await Assert.That(SlackOptions.FromEnvironment(Env([.. tokens, ("SLACK_THREAD_FOLLOWUP", "off")])).ThreadFollowUp).IsFalse();
+        await Assert.That(SlackOptions.FromEnvironment(Env([.. tokens, ("SLACK_THREAD_FOLLOWUP", "on")])).ThreadFollowUp).IsTrue();
+    }
+
+    [Test]
     public async Task Claudeの既定値()
     {
         var c = ClaudeOptions.FromEnvironment(Env(("ANTHROPIC_API_KEY", "k")));

@@ -22,7 +22,8 @@ public sealed class SlackConnector(SlackApi api, SlackOptions options, int chann
         var me = await api.AuthTest(ct);
         _botUserId = me.UserId!;
         _botId = me.BotId;
-        log.LogInformation("Slack にログイン: bot_user={User} bot_id={Bot}", me.UserId, me.BotId);
+        log.LogInformation("Slack にログイン: bot_user={User} bot_id={Bot} thread_followup={FollowUp}",
+            me.UserId, me.BotId, options.ThreadFollowUp ? "on" : "off");
 
         _socket = new SocketModeClient(api, options.AppToken, (ev, _, c) => OnEvent(ev, handler, c), log);
         await _socket.RunAsync(ct);
@@ -30,7 +31,7 @@ public sealed class SlackConnector(SlackApi api, SlackOptions options, int chann
 
     private async Task OnEvent(SlackEvent ev, IMessageHandler handler, CancellationToken ct)
     {
-        var decision = Dispatch.Decide(ev, _botUserId);
+        var decision = Dispatch.Decide(ev, _botUserId, options.ThreadFollowUp);
         if (decision == Decision.Ignore) return;
         // app_mention と message は同じ発言で両方届く。再送も来る
         if (!_seen.Add($"{ev.Channel}:{ev.Ts}")) return;
@@ -44,12 +45,14 @@ public sealed class SlackConnector(SlackApi api, SlackOptions options, int chann
             ? await api.Replies(channel, threadTs, 200, ct)
             : await api.History(channel, 200, ct);
 
-        if (decision == Decision.ReplyIfBotInThread &&
-            !history.Any(m => m.User == _botUserId || (_botId is not null && m.BotId == _botId)))
+        // 親がボットを呼んでいれば「aizuchi と話すために立てたスレッド」。以降はメンション無しで続けられる。
+        // 人同士のスレッドに途中から呼ばれた場合は親にメンションが無いので、呼ばれたときだけ返す
+        if (decision == Decision.ReplyIfOwnThread && !Dispatch.StartedByMention(history, threadTs, _botUserId))
             return;
 
         var conversation = new SlackConversation(api, channel, threadTs, isDm, history, ev, _botUserId, _botId, channelContext);
         var text = SlackText.StripMention(ev.Text, _botUserId);
         await handler.HandleAsync(new IncomingMessage($"{channel}:{threadTs ?? ev.Ts}", channel, text, conversation), ct);
     }
+
 }

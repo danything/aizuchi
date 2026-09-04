@@ -7,14 +7,18 @@ public enum Decision
     Ignore,
     /// <summary>返信する</summary>
     Reply,
-    /// <summary>ボットが既に参加しているスレッドなら返信する(履歴を見て判定)</summary>
-    ReplyIfBotInThread,
+    /// <summary>ボットを呼んで始まったスレッドなら返信する(親の発言を見て判定)</summary>
+    ReplyIfOwnThread,
 }
 
 /// <summary>どのイベントに反応するかの判定。副作用なし</summary>
 public static class Dispatch
 {
-    public static Decision Decide(SlackEvent ev, string botUserId)
+    /// <param name="threadFollowUp">
+    /// ボットを呼んで始まったスレッドの続きに、メンション無しでも返すか。
+    /// false なら DM とメンションだけに反応する
+    /// </param>
+    public static Decision Decide(SlackEvent ev, string botUserId, bool threadFollowUp)
     {
         if (ev.Type is not ("message" or "app_mention")) return Decision.Ignore;
         // message_changed / message_deleted / bot_message / channel_join など編集・システム系は見ない
@@ -25,7 +29,17 @@ public static class Dispatch
 
         if (ev.ChannelType == "im") return Decision.Reply;
         if (SlackText.MentionsBot(ev.Text, botUserId)) return Decision.Reply;
-        if (ev.ThreadTs is not null && ev.ThreadTs != ev.Ts) return Decision.ReplyIfBotInThread;
+        if (threadFollowUp && ev.ThreadTs is not null && ev.ThreadTs != ev.Ts) return Decision.ReplyIfOwnThread;
         return Decision.Ignore;
+    }
+
+    /// <summary>
+    /// スレッドの親がボットを呼んでいるか。ReplyIfOwnThread の答え合わせに使う。
+    /// conversations.replies は親を先頭に古い順で返すが、念のため ts で引く。
+    /// </summary>
+    public static bool StartedByMention(IReadOnlyList<SlackMessage> thread, string? threadTs, string botUserId)
+    {
+        var parent = thread.FirstOrDefault(m => m.Ts == threadTs) ?? thread.FirstOrDefault();
+        return SlackText.MentionsBot(parent?.Text, botUserId);
     }
 }

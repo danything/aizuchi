@@ -7,6 +7,13 @@ image:
 connector: slack
 provider: claude
 
+# Slack コネクタの設定(connector: slack のとき)
+slack:
+  # @aizuchi を呼んで始まったスレッドでは、続きにメンション無しでも返すか。
+  # 人同士のスレッドに途中から呼ばれた場合は、これが true でも呼ばれたときしか返さない。
+  # false にすると DM 以外はいつでもメンションが要る
+  threadFollowUp: true
+
 # 認証情報を持つ Secret。キーはコネクタ / プロバイダごとに決まっている:
 #   slack:  slack-bot-token(xoxb-) / slack-app-token(xapp-, connections:write)
 #   claude: anthropic-api-key(sk-ant-)
