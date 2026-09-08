@@ -32,7 +32,7 @@ public class SlackTextTests
     [Test]
     public async Task 既定の分割幅はバイト数で収まり中身を落とさない()
     {
-        // chat.update は日本語 2,800 文字(8,400 バイト)で msg_too_long になった
+        // chat.update の上限は 4,000 バイト(文字数ではない)。日本語 1,334 文字で msg_too_long
         var japanese = string.Concat(Enumerable.Repeat("あ", 10_000));
         var parts = SlackText.Split(japanese);
         await Assert.That(parts.Count).IsGreaterThan(1);

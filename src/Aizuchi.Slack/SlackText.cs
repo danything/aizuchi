@@ -22,19 +22,21 @@ public static partial class SlackText
     }
 
     /// <summary>
-    /// 分割の既定幅(UTF-8 バイト)。chat.update の実際の上限が分かるまでの安全側の値。
-    /// 日本語なら約 1,000 文字、英語なら 3,000 文字。
+    /// 分割の既定幅(UTF-8 バイト)。chat.update の上限 4,000 バイトに、
+    /// 途中経過に付けるカーソル(" ▍" = 4 バイト)の分の余裕を持たせた値。
+    /// 日本語なら約 1,266 文字、英語なら 3,800 文字。
     /// </summary>
-    public const int DefaultMaxBytes = 3_000;
+    public const int DefaultMaxBytes = 3_800;
 
     /// <summary>
     /// Slack の上限を超えないよう改行位置で分割する。上限は UTF-8 のバイト数で数える。
     ///
-    /// 実測でこうなっている:
-    ///   chat.postMessage  日本語 4,000 文字(12,000 バイト) → 通る
-    ///   chat.update       日本語 2,800 文字( 8,400 バイト) → msg_too_long
-    /// update のほうが postMessage よりずっと厳しく、境界は未確定。文字数で見ると
-    /// 日本語だけ落ちる作りになりやすいので、バイトで数えて安全側に置く。
+    /// chat.update のドキュメントは「text は 4,000 characters まで」と書いているが、
+    /// 実測すると characters ではなく bytes だった(二分探索で通る最大を測った結果):
+    ///   ASCII    4,000 文字 = 4,000 バイト → 通る
+    ///   日本語   1,333 文字 = 3,999 バイト → ここが天井。1,334 文字で msg_too_long
+    /// 文字数で数えると日本語だけ 3 倍の量を送ってしまうので、バイトで数える。
+    /// なお chat.postMessage はこれよりずっと緩く、日本語 4,000 文字でも通る。
     /// </summary>
     public static List<string> Split(string text, int maxBytes = DefaultMaxBytes)
     {
