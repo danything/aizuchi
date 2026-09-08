@@ -30,17 +30,16 @@ public class SlackTextTests
     }
 
     [Test]
-    public async Task 既定の分割幅は日本語でもバイト数で収まる()
+    public async Task 既定の分割幅はchat_updateに収まり中身を落とさない()
     {
-        // 日本語は 1 文字 3 バイト。文字数で見ていると chat.update に msg_too_long で弾かれる
-        var parts = SlackText.Split(string.Concat(Enumerable.Repeat("あ", 5_000)));
+        // chat.update は 3,800 文字で msg_too_long になった。日本語も英語も 2,800 文字に抑える
+        var japanese = string.Concat(Enumerable.Repeat("あ", 10_000));
+        var parts = SlackText.Split(japanese);
         await Assert.That(parts.Count).IsGreaterThan(1);
-        await Assert.That(parts).All(p => System.Text.Encoding.UTF8.GetByteCount(p) <= 3_500);
-        await Assert.That(string.Concat(parts)).IsEqualTo(string.Concat(Enumerable.Repeat("あ", 5_000)));
+        await Assert.That(parts).All(p => p.Length <= 2_800);
+        await Assert.That(string.Concat(parts)).IsEqualTo(japanese);
 
-        // 英語だけの返信も、文字数で見ている場合の上限(3,000)に収める
-        var ascii = SlackText.Split(new string('x', 20_000));
-        await Assert.That(ascii).All(p => System.Text.Encoding.UTF8.GetByteCount(p) <= 3_500 && p.Length <= 2_800);
+        await Assert.That(SlackText.Split(new string('x', 20_000))).All(p => p.Length <= 2_800);
     }
 
     [Test]

@@ -68,7 +68,7 @@ public sealed class SlackReplyDraft(SlackApi api, string channel, string ts, str
         catch (SlackApiException ex) when (ex.Error == "msg_too_long")
         {
             // 上限の見立てが外れても返信ごと捨てない。刻み直してやり直す(まだ何も出していないので重複しない)
-            parts = SlackText.Split(text, 1_500);
+            parts = SlackText.Split(text, 1_000);
             await api.UpdateMessage(channel, ts, parts[0], ct);
         }
         foreach (var p in parts.Skip(1))
