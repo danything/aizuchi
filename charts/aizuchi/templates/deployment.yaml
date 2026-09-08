@@ -56,6 +56,8 @@ spec:
             {{- end }}
             - name: CLAUDE_FALLBACKS
               value: {{ .Values.claude.fallbacks | quote }}
+            - name: CLAUDE_WEB_SEARCH_MAX_USES
+              value: {{ .Values.claude.webSearchMaxUses | quote }}
             {{- end }}
             {{- if .Values.github.enabled }}
             {{- if eq .Values.github.auth "token" }}

@@ -53,6 +53,9 @@ claude:
   effort: ""
   # 拒絶時にサーバー側で別モデルへフォールバックする beta。"off" で無効
   fallbacks: default
+  # Web 検索(Anthropic 側で実行されるサーバーツール)の 1 応答あたりの呼び出し上限。0 で無効。
+  # $10 / 1,000 検索。外部ページの内容が文脈に入るので、記憶(memory)の扱いに注意すること
+  webSearchMaxUses: 0
 
 # GitHub を読む道具(読み取り専用)。auth は app か token
 github:

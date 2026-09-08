@@ -33,6 +33,7 @@ public class OptionsTests
         await Assert.That(c.MaxTokens).IsEqualTo(16_000);
         await Assert.That(c.Effort).IsNull();
         await Assert.That(c.Fallbacks).IsTrue();
+        await Assert.That(c.WebSearchMaxUses).IsEqualTo(0); // Web 検索は既定で無効
         await Assert.That(c.BaseUrl).IsEqualTo("https://api.anthropic.com");
     }
 
@@ -40,11 +41,13 @@ public class OptionsTests
     public async Task Claudeの上書き()
     {
         var c = ClaudeOptions.FromEnvironment(Env(("ANTHROPIC_API_KEY", "k"),
-            ("CLAUDE_MODEL", "claude-sonnet-5"), ("CLAUDE_EFFORT", "low"), ("CLAUDE_FALLBACKS", "off"), ("CLAUDE_MAX_TOKENS", "4096")));
+            ("CLAUDE_MODEL", "claude-sonnet-5"), ("CLAUDE_EFFORT", "low"), ("CLAUDE_FALLBACKS", "off"),
+            ("CLAUDE_MAX_TOKENS", "4096"), ("CLAUDE_WEB_SEARCH_MAX_USES", "8")));
         await Assert.That(c.Model).IsEqualTo("claude-sonnet-5");
         await Assert.That(c.Effort).IsEqualTo("low");
         await Assert.That(c.Fallbacks).IsFalse();
         await Assert.That(c.MaxTokens).IsEqualTo(4096);
+        await Assert.That(c.WebSearchMaxUses).IsEqualTo(8);
     }
 
     [Test]

@@ -7,6 +7,7 @@ namespace Aizuchi.Claude;
     PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(MessagesRequest))]
+[JsonSerializable(typeof(ContentBlockParam))]
 [JsonSerializable(typeof(StreamEvent))]
 [JsonSerializable(typeof(ErrorResponse))]
 public sealed partial class ClaudeJson : JsonSerializerContext;
@@ -25,14 +26,21 @@ public sealed class MessagesRequest
     public string? Fallbacks { get; set; }
 }
 
-/// <summary>content は常にブロックの配列で送る(文字列は糖衣なので使わない)</summary>
+/// <summary>
+/// content は常にブロックの配列で送る(文字列は糖衣なので使わない)。
+/// web_search など、こちらが解釈しないサーバーツールのブロックも受け取ったまま返せるよう、
+/// 組み立て済みの JSON で持つ。
+/// </summary>
 public sealed class MessageParam
 {
     public required string Role { get; set; }
-    public required List<ContentBlockParam> Content { get; set; }
+    public required List<JsonElement> Content { get; set; }
 
     public static MessageParam Text(string role, string text) =>
-        new() { Role = role, Content = [new ContentBlockParam { Type = "text", Text = text }] };
+        new() { Role = role, Content = [Block(new ContentBlockParam { Type = "text", Text = text })] };
+
+    public static JsonElement Block(ContentBlockParam block) =>
+        JsonSerializer.SerializeToElement(block, ClaudeJson.Default.ContentBlockParam);
 }
 
 /// <summary>
@@ -55,11 +63,19 @@ public sealed class ContentBlockParam
     public bool? IsError { get; set; }
 }
 
+/// <summary>
+/// 道具の宣言。自前の道具は name / description / input_schema を出し、
+/// サーバーツール(web_search など)は type と name だけを出す。
+/// </summary>
 public sealed class ToolParam
 {
     public required string Name { get; set; }
-    public required string Description { get; set; }
-    public required JsonElement InputSchema { get; set; }
+    /// <summary>サーバーツールの型(例: web_search_20260209)。自前の道具では出さない</summary>
+    public string? Type { get; set; }
+    public string? Description { get; set; }
+    public JsonElement? InputSchema { get; set; }
+    /// <summary>サーバーツールの 1 応答あたりの呼び出し上限</summary>
+    public int? MaxUses { get; set; }
 }
 
 public sealed class OutputConfig

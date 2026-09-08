@@ -85,21 +85,69 @@ public class ClaudeTests
 
         await Assert.That(blocks.Count).IsEqualTo(3);
         await Assert.That(blocks[0].Type).IsEqualTo("thinking");
-        await Assert.That(blocks[0].Signature).IsEqualTo("sig==");
-        await Assert.That(blocks[1].Text).IsEqualTo("覚えます");
+        await Assert.That(blocks[1].Type).IsEqualTo("text");
+        await Assert.That(blocks[1].Raw.GetProperty("text").GetString()).IsEqualTo("覚えます");
         await Assert.That(blocks[2].Name).IsEqualTo("memory_append");
         await Assert.That(blocks[2].Input!.Value.GetProperty("scope").GetString()).IsEqualTo("shared");
 
         // 返すときの形: thinking は署名付き、tool_use は input がオブジェクト
-        var json = JsonSerializer.Serialize(new MessageParam { Role = "assistant", Content = blocks }, ClaudeJson.Default.MessagesRequest.Options.GetTypeInfo(typeof(MessageParam)));
+        var json = JsonSerializer.Serialize(
+            new MessageParam { Role = "assistant", Content = [.. blocks.Select(x => x.Raw)] },
+            ClaudeJson.Default.MessagesRequest.Options.GetTypeInfo(typeof(MessageParam)));
         await Assert.That(json).Contains("""{"type":"thinking","thinking":"","signature":"sig=="}""");
         await Assert.That(json).Contains("""{"type":"tool_use","id":"toolu_1","name":"memory_append","input":{"scope":"shared","text":"x"}}""");
         await Assert.That(json).DoesNotContain("is_error");
 
         var result = JsonSerializer.Serialize(
             new ContentBlockParam { Type = "tool_result", ToolUseId = "toolu_1", Content = "ok", IsError = true },
-            ClaudeJson.Default.MessagesRequest.Options.GetTypeInfo(typeof(ContentBlockParam)));
+            ClaudeJson.Default.ContentBlockParam);
         await Assert.That(result).IsEqualTo("""{"type":"tool_result","tool_use_id":"toolu_1","content":"ok","is_error":true}""");
+    }
+
+    [Test]
+    public async Task サーバーツールのブロックは解釈せずそのまま返す()
+    {
+        // web_search は Anthropic 側で実行される。server_tool_use と結果を落とすと会話が壊れるので素通しする
+        var resultBlock = """{"type":"web_search_tool_result","tool_use_id":"srvtoolu_1","content":[{"type":"web_search_result","url":"https://example.com","title":"例"}]}""";
+        var b = new BlockBuilder();
+        b.Start(0, new StreamContentBlock { Type = "server_tool_use", Id = "srvtoolu_1", Name = "web_search" });
+        b.Delta(0, new StreamDelta { Type = "input_json_delta", PartialJson = """{"query":"slack chat.update"}""" });
+        b.Start(1, new StreamContentBlock { Type = "web_search_tool_result" }, JsonDocument.Parse(resultBlock).RootElement);
+        var blocks = b.Finish();
+
+        await Assert.That(blocks.Count).IsEqualTo(2);
+        // server_tool_use は自前の道具ではないので実行対象にならない
+        await Assert.That(blocks.Count(x => x.Type == "tool_use")).IsEqualTo(0);
+
+        var json = JsonSerializer.Serialize(
+            new MessageParam { Role = "assistant", Content = [.. blocks.Select(x => x.Raw)] },
+            ClaudeJson.Default.MessagesRequest.Options.GetTypeInfo(typeof(MessageParam)));
+        await Assert.That(json).Contains("""{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{"query":"slack chat.update"}}""");
+        await Assert.That(json).Contains("web_search_tool_result");
+        await Assert.That(json).Contains("https://example.com");
+    }
+
+    [Test]
+    public async Task 素通しできないブロックは落とす()
+    {
+        // 生 JSON を取れなかった未知のブロックは、組み立て直せないので返さない(壊れた形で送らない)
+        var b = new BlockBuilder();
+        b.Start(0, new StreamContentBlock { Type = "何かの新しいブロック" });
+        await Assert.That(b.Finish().Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task web_searchはtypeとnameとmax_usesだけで宣言する()
+    {
+        var req = new MessagesRequest
+        {
+            Model = "claude-opus-5", MaxTokens = 16000, Messages = [],
+            Tools = [new ToolParam { Type = "web_search_20260209", Name = "web_search", MaxUses = 8 }],
+        };
+        var json = JsonSerializer.Serialize(req, ClaudeJson.Default.MessagesRequest);
+        await Assert.That(json).Contains("""{"name":"web_search","type":"web_search_20260209","max_uses":8}""");
+        await Assert.That(json).DoesNotContain("input_schema");
+        await Assert.That(json).DoesNotContain("description");
     }
 
     [Test]
