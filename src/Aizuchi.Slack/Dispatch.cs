@@ -27,11 +27,18 @@ public static class Dispatch
         if (ev.BotId is not null || ev.User is null || ev.User == botUserId) return Decision.Ignore;
         if (string.IsNullOrWhiteSpace(ev.Text) || ev.Channel is null || ev.Ts is null) return Decision.Ignore;
 
-        if (ev.ChannelType == "im") return Decision.Reply;
+        if (IsDm(ev)) return Decision.Reply;
         if (SlackText.MentionsBot(ev.Text, botUserId)) return Decision.Reply;
         if (threadFollowUp && ev.ThreadTs is not null && ev.ThreadTs != ev.Ts) return Decision.ReplyIfOwnThread;
         return Decision.Ignore;
     }
+
+    /// <summary>
+    /// DM か。app_mention イベントには channel_type が付かないので、チャンネル ID の頭文字も見る。
+    /// 同じ発言で message と app_mention の両方が届き、どちらが先に着くかで判定が揺れるのを防ぐ。
+    /// </summary>
+    public static bool IsDm(SlackEvent ev) =>
+        ev.ChannelType == "im" || ev.Channel is ['D', ..];
 
     /// <summary>
     /// スレッドの親がボットを呼んでいるか。ReplyIfOwnThread の答え合わせに使う。

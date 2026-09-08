@@ -44,4 +44,6 @@ Socket Mode で動くので公開 URL は要らない。
 今どちらかは起動ログの `thread_followup=` で分かる。
 
 `app_mention` と `message` は同じ発言で両方届き、Slack の再送もあるので `channel:ts` で重複排除している。
+`app_mention` には `channel_type` が付かないので、DM 判定はチャンネル ID の頭文字(`D`)も見る。
+先に届いた側で「DM なのにスレッドで返す」と挙動が変わってしまうため。
 Markdown → mrkdwn の変換(太字・見出し・リンク・表・箇条書き・エスケープ)もこのコネクタの中。

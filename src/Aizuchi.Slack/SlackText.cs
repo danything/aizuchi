@@ -21,10 +21,10 @@ public static partial class SlackText
     }
 
     /// <summary>
-    /// Slack の 1 メッセージ上限(40,000 文字)を超えないよう改行位置で分割する。
-    /// 読みやすさ優先で既定は 12,000 文字。
+    /// Slack の上限を超えないよう改行位置で分割する。chat.update は text が 4,000 文字を超えると
+    /// msg_too_long で失敗するので、途中経過のカーソル分も見て少し余裕を持たせる。
     /// </summary>
-    public static List<string> Split(string text, int max = 12_000)
+    public static List<string> Split(string text, int max = 3_800)
     {
         var parts = new List<string>();
         var rest = text;

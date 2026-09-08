@@ -37,7 +37,7 @@ public sealed class SlackConnector(SlackApi api, SlackOptions options, int chann
         if (!_seen.Add($"{ev.Channel}:{ev.Ts}")) return;
 
         var channel = ev.Channel!;
-        var isDm = ev.ChannelType == "im";
+        var isDm = Dispatch.IsDm(ev);
         // チャンネルではスレッドで返す。DM のトップレベルはそのまま返す
         var threadTs = ev.ThreadTs ?? (isDm ? null : ev.Ts);
 

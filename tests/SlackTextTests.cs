@@ -30,6 +30,15 @@ public class SlackTextTests
     }
 
     [Test]
+    public async Task 既定の分割幅はchat_updateの4000文字上限に収まる()
+    {
+        // chat.update は text が 4,000 文字を超えると msg_too_long で失敗する
+        var parts = SlackText.Split(new string('x', 20_000));
+        await Assert.That(parts.Count).IsGreaterThan(1);
+        await Assert.That(parts).All(p => p.Length < 4_000);
+    }
+
+    [Test]
     public async Task 改行が無ければ固定長で切る()
     {
         var parts = SlackText.Split(new string('x', 25), 10);

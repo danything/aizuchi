@@ -6,14 +6,28 @@ public class DispatchTests
     private const string Bot = "UBOT";
 
     private static SlackEvent Ev(string type = "message", string? text = "hi", string? user = "U1",
-        string? channelType = "channel", string? threadTs = null, string? subtype = null, string? botId = null) =>
-        new() { Type = type, Text = text, User = user, Channel = "C1", ChannelType = channelType, Ts = "2.0", ThreadTs = threadTs, Subtype = subtype, BotId = botId };
+        string? channelType = "channel", string? threadTs = null, string? subtype = null, string? botId = null,
+        string? channel = "C1") =>
+        new() { Type = type, Text = text, User = user, Channel = channel, ChannelType = channelType, Ts = "2.0", ThreadTs = threadTs, Subtype = subtype, BotId = botId };
 
     /// <summary>既定はスレッド追従あり。切ったときの違いを見たいテストだけ false を渡す</summary>
     private static Decision Decide(SlackEvent ev, bool threadFollowUp = true) => Dispatch.Decide(ev, Bot, threadFollowUp);
 
     [Test]
     public async Task DMは常に返す() => await Assert.That(Decide(Ev(channelType: "im"))).IsEqualTo(Decision.Reply);
+
+    [Test]
+    public async Task DMはchannel_typeが無くてもチャンネルIDで分かる()
+    {
+        // app_mention には channel_type が付かない。先に届いた側で判定が揺れないよう ID の頭文字も見る
+        await Assert.That(Dispatch.IsDm(Ev(type: "app_mention", text: "<@UBOT> hi", channelType: null, channel: "D1"))).IsTrue();
+        await Assert.That(Dispatch.IsDm(Ev(channelType: "im"))).IsTrue();
+        await Assert.That(Dispatch.IsDm(Ev())).IsFalse();
+        // グループ DM とプライベートチャンネルは DM 扱いしない(スレッドで返す)
+        await Assert.That(Dispatch.IsDm(Ev(channelType: "mpim", channel: "G1"))).IsFalse();
+        // channel_type が無い DM でも、メンション無しで返す
+        await Assert.That(Decide(Ev(channelType: null, channel: "D1"))).IsEqualTo(Decision.Reply);
+    }
 
     [Test]
     public async Task メンションされたら返す()
