@@ -30,12 +30,25 @@ public class SlackTextTests
     }
 
     [Test]
-    public async Task 既定の分割幅はchat_updateの4000文字上限に収まる()
+    public async Task 既定の分割幅は日本語でもバイト数で収まる()
     {
-        // chat.update は text が 4,000 文字を超えると msg_too_long で失敗する
-        var parts = SlackText.Split(new string('x', 20_000));
+        // 日本語は 1 文字 3 バイト。文字数で見ていると chat.update に msg_too_long で弾かれる
+        var parts = SlackText.Split(string.Concat(Enumerable.Repeat("あ", 5_000)));
         await Assert.That(parts.Count).IsGreaterThan(1);
-        await Assert.That(parts).All(p => p.Length < 4_000);
+        await Assert.That(parts).All(p => System.Text.Encoding.UTF8.GetByteCount(p) <= 3_500);
+        await Assert.That(string.Concat(parts)).IsEqualTo(string.Concat(Enumerable.Repeat("あ", 5_000)));
+
+        // 英語だけの返信も、文字数で見ている場合の上限(3,000)に収める
+        var ascii = SlackText.Split(new string('x', 20_000));
+        await Assert.That(ascii).All(p => System.Text.Encoding.UTF8.GetByteCount(p) <= 3_500 && p.Length <= 2_800);
+    }
+
+    [Test]
+    public async Task 絵文字のサロゲートペアを割らない()
+    {
+        var parts = SlackText.Split(string.Concat(Enumerable.Repeat("🙂", 2_000)), 100);
+        await Assert.That(parts).All(p => !p.Any(char.IsLowSurrogate) || p.Length % 2 == 0);
+        await Assert.That(string.Concat(parts)).IsEqualTo(string.Concat(Enumerable.Repeat("🙂", 2_000)));
     }
 
     [Test]

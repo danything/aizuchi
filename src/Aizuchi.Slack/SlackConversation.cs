@@ -62,8 +62,15 @@ public sealed class SlackReplyDraft(SlackApi api, string channel, string ts, str
     /// <summary>確定本文で置き換える。長ければ続きをスレッドに追加投稿する</summary>
     public async Task FinishAsync(string markdown, CancellationToken ct)
     {
-        var parts = SlackText.Split(Mrkdwn.FromMarkdown(markdown));
-        await api.UpdateMessage(channel, ts, parts[0], ct);
+        var text = Mrkdwn.FromMarkdown(markdown);
+        var parts = SlackText.Split(text);
+        try { await api.UpdateMessage(channel, ts, parts[0], ct); }
+        catch (SlackApiException ex) when (ex.Error == "msg_too_long")
+        {
+            // 上限の見立てが外れても返信ごと捨てない。刻み直してやり直す(まだ何も出していないので重複しない)
+            parts = SlackText.Split(text, 1_500);
+            await api.UpdateMessage(channel, ts, parts[0], ct);
+        }
         foreach (var p in parts.Skip(1))
             await api.PostMessage(channel, p, threadTs, ct);
     }
