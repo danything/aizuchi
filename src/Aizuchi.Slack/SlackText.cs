@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Aizuchi.Slack;
@@ -21,19 +22,27 @@ public static partial class SlackText
     }
 
     /// <summary>
-    /// Slack の上限を超えないよう改行位置で分割する。上限は文字数で数える。
-    ///
-    /// chat.postMessage は日本語 4,000 文字(= 12,000 バイト)を通すので、判定はバイト数ではない。
-    /// ただし chat.update は 3,800 文字の日本語を msg_too_long で弾いたので、
-    /// ドキュメントの「4,000 文字」は当てにせず 2,800 に抑える。
+    /// 分割の既定幅(UTF-8 バイト)。chat.update の実際の上限が分かるまでの安全側の値。
+    /// 日本語なら約 1,000 文字、英語なら 3,000 文字。
     /// </summary>
-    public static List<string> Split(string text, int max = 2_800)
+    public const int DefaultMaxBytes = 3_000;
+
+    /// <summary>
+    /// Slack の上限を超えないよう改行位置で分割する。上限は UTF-8 のバイト数で数える。
+    ///
+    /// 実測でこうなっている:
+    ///   chat.postMessage  日本語 4,000 文字(12,000 バイト) → 通る
+    ///   chat.update       日本語 2,800 文字( 8,400 バイト) → msg_too_long
+    /// update のほうが postMessage よりずっと厳しく、境界は未確定。文字数で見ると
+    /// 日本語だけ落ちる作りになりやすいので、バイトで数えて安全側に置く。
+    /// </summary>
+    public static List<string> Split(string text, int maxBytes = DefaultMaxBytes)
     {
         var parts = new List<string>();
         var rest = text.AsSpan();
-        while (rest.Length > max)
+        while (Encoding.UTF8.GetByteCount(rest) > maxBytes)
         {
-            var cut = CutIndex(rest, max);
+            var cut = CutIndex(rest, maxBytes);
             parts.Add(rest[..cut].TrimEnd('\n').ToString());
             rest = rest[cut..].TrimStart('\n');
         }
@@ -41,15 +50,21 @@ public static partial class SlackText
         return parts;
     }
 
-    /// <summary>max に収まる切り位置。改行があればそこで、無ければ文字の境界で切る</summary>
-    private static int CutIndex(ReadOnlySpan<char> text, int max)
+    /// <summary>maxBytes に収まる切り位置。改行があればそこで、無ければ文字の境界で切る</summary>
+    private static int CutIndex(ReadOnlySpan<char> text, int maxBytes)
     {
-        var fits = Math.Min(max, text.Length);
-        // 絵文字などのサロゲートペアは割らない
-        if (fits < text.Length && char.IsLowSurrogate(text[fits])) fits--;
-        var newline = text[..fits].LastIndexOf('\n');
+        int bytes = 0, fits = 0, newline = -1;
+        while (fits < text.Length)
+        {
+            // 絵文字などのサロゲートペアは割らない
+            var width = char.IsHighSurrogate(text[fits]) && fits + 1 < text.Length ? 2 : 1;
+            bytes += Encoding.UTF8.GetByteCount(text.Slice(fits, width));
+            if (bytes > maxBytes) break;
+            fits += width;
+            if (text[fits - 1] == '\n') newline = fits;
+        }
         // 改行が手前すぎるなら諦めて入るだけ入れる。1 文字も入らない指定でも進めるよう最低 1 は返す
-        return newline >= fits / 2 ? newline : Math.Max(fits, 1);
+        return newline >= fits / 2 && newline > 0 ? newline : Math.Max(fits, 1);
     }
 
     private static Regex MentionOf(string botUserId) =>

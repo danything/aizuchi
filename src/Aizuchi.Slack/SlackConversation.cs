@@ -64,12 +64,16 @@ public sealed class SlackReplyDraft(SlackApi api, string channel, string ts, str
     {
         var text = Mrkdwn.FromMarkdown(markdown);
         var parts = SlackText.Split(text);
-        try { await api.UpdateMessage(channel, ts, parts[0], ct); }
-        catch (SlackApiException ex) when (ex.Error == "msg_too_long")
+        // chat.update の上限は postMessage より低く、正確な値が分かっていない。弾かれたら
+        // 半分に刻んで通るまで試す(update が先なので、やり直しても重複投稿にはならない)
+        for (var budget = SlackText.DefaultMaxBytes; ;)
         {
-            // 上限の見立てが外れても返信ごと捨てない。刻み直してやり直す(まだ何も出していないので重複しない)
-            parts = SlackText.Split(text, 1_000);
-            await api.UpdateMessage(channel, ts, parts[0], ct);
+            try { await api.UpdateMessage(channel, ts, parts[0], ct); break; }
+            catch (SlackApiException ex) when (ex.Error == "msg_too_long" && budget > 400)
+            {
+                budget /= 2;
+                parts = SlackText.Split(text, budget);
+            }
         }
         foreach (var p in parts.Skip(1))
             await api.PostMessage(channel, p, threadTs, ct);
