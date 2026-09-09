@@ -5,6 +5,7 @@
     <Project Path="src/Aizuchi.Slack/Aizuchi.Slack.csproj" />
     <Project Path="src/Aizuchi.Claude/Aizuchi.Claude.csproj" />
     <Project Path="src/Aizuchi.GitHub/Aizuchi.GitHub.csproj" />
+    <Project Path="src/Aizuchi.OpenProject/Aizuchi.OpenProject.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Aizuchi.Tests.csproj" />

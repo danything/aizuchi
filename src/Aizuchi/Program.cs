@@ -1,6 +1,7 @@
 using Aizuchi.Claude;
 using Aizuchi.Core;
 using Aizuchi.GitHub;
+using Aizuchi.OpenProject;
 using Aizuchi.Slack;
 using System.Security.Cryptography;
 
@@ -28,6 +29,7 @@ IChatConnector connector;
 ILlmProvider provider;
 BotOptions options;
 GitHubOptions? github;
+OpenProjectOptions? openProject;
 try
 {
     Func<string, string?> env = Environment.GetEnvironmentVariable;
@@ -41,6 +43,7 @@ try
     connector = makeConnector(env, options, log);
     provider = makeProvider(env);
     github = GitHubOptions.FromEnvironment(env);
+    openProject = OpenProjectOptions.FromEnvironment(env);
 }
 catch (ConfigException ex)
 {
@@ -83,6 +86,21 @@ if (github is not null)
     catch (Exception ex) when (ex is GitHubException or HttpRequestException or CryptographicException)
     {
         Console.Error.WriteLine($"GitHub の認証に失敗しました: {ex.Message}");
+        return 1;
+    }
+}
+
+if (openProject is not null)
+{
+    var opHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+    try
+    {
+        packs.Add(await OpenProjectToolPack.CreateAsync(new OpenProjectClient(opHttp, openProject), stopping));
+        log.LogInformation("OpenProject: {Url} を読める", openProject.Url);
+    }
+    catch (Exception ex) when (ex is OpenProjectException or HttpRequestException)
+    {
+        Console.Error.WriteLine($"OpenProject に接続できません: {ex.Message}");
         return 1;
     }
 }

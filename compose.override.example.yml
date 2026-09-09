@@ -23,6 +23,9 @@ services:
       #  ...
       #  -----END RSA PRIVATE KEY-----
       #GITHUB_OWNERS: danything,5ym
+      # --- openproject (任意。セルフホストの URL と API キー) ---
+      #OPENPROJECT_URL: https://openproject.example.com
+      #OPENPROJECT_API_KEY: ...
       # --- bot 共通 ---
       #BOT_SYSTEM_PROMPT: 常に関西弁で。
       #BOT_MAX_HISTORY: "50"

@@ -67,6 +67,14 @@ github:
   # auth: app では省略可(インストール先が全部読める)。絞るなら書く
   owners: ""      # 例: danything,5ym
 
+# OpenProject を読む道具(読み取り専用)。セルフホストの URL を指定する
+openproject:
+  enabled: false
+  # 例: https://openproject.example.com。末尾のスラッシュは不要
+  url: ""
+  # API キーは existingSecret のキー openproject-api-key(OpenProject の
+  # 「マイアカウント → アクセストークン → API」で作る)
+
 # そのまま container.env に足す
 extraEnv: []
 

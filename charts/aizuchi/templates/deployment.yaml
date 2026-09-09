@@ -80,6 +80,15 @@ spec:
               value: {{ . | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.openproject.enabled }}
+            - name: OPENPROJECT_URL
+              value: {{ required "openproject.url が必要です" .Values.openproject.url | quote }}
+            - name: OPENPROJECT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: openproject-api-key
+            {{- end }}
             {{- with .Values.bot.systemPrompt }}
             - name: BOT_SYSTEM_PROMPT
               value: {{ . | quote }}

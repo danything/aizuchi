@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- OpenProject を読む道具。セルフホスト前提で URL は設定から取り、API キーで Basic 認証する -->
+  <ItemGroup>
+    <ProjectReference Include="../Aizuchi.Core/Aizuchi.Core.csproj" />
+  </ItemGroup>
+</Project>

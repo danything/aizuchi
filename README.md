@@ -58,6 +58,30 @@ system prompt の末尾に差し込まれ、LLM 自身が道具(`memory_append` 
 インストールトークンは 1 時間で自動更新される。複数の owner にインストールすれば起動時に全部拾う。
 PAT で済ませるなら `github.auth=token`、Secret のキー `github-token`、`github.owners` を必須で書く。
 
+## OpenProject を読む
+
+`openproject.enabled=true` と `openproject.url` を設定すると、LLM が **読み取り専用**で作業パッケージを調べられる。
+セルフホスト前提なので URL は必ず指定する(SaaS 版でも URL を書けば同じ)。
+
+| 道具 | 中身 |
+|---|---|
+| `openproject_projects` | プロジェクト一覧。識別子の揺れはまずこれで確かめる |
+| `openproject_search` | 作業パッケージの横断検索(既定は未完了のみ) |
+| `openproject_list` | プロジェクト内の一覧(更新の新しい順) |
+| `openproject_get` | 1 件の詳細と、人が書いたコメント |
+
+作成も更新もできない。読める範囲は API キーを作ったユーザーの権限に閉じるので、
+**ボット用のユーザーを作って必要なプロジェクトだけ見せる**のが安全。
+
+### API キーの作り方
+
+1. ボット用ユーザーで OpenProject にログイン
+2. **マイアカウント → アクセストークン → API** で生成
+3. Secret にキー `openproject-api-key` を入れ、values に `openproject.enabled=true` と `openproject.url` を書く
+
+認証は Basic で、ユーザー名は `apikey` 固定・パスワードが API キー。起動時に `/api/v3/users/me` を引いて
+通らなければ落とすので、キーの誤りは起動時に分かる。
+
 ## Web 検索(既定で無効)
 
 `claude.webSearchMaxUses` を 1 以上にすると、LLM が **Anthropic 側で実行される `web_search`** を使えるようになる。
@@ -77,6 +101,7 @@ src/Aizuchi.Core/     IChatConnector / ILlmProvider / ITool / IConversation / IR
 src/Aizuchi.Slack/    Slack コネクタ: Socket Mode、Web API、反応判定、履歴→messages、Markdown→mrkdwn
 src/Aizuchi.Claude/   Claude プロバイダ: /v1/messages のストリーミング(SSE)とツール呼び出しの往復
 src/Aizuchi.GitHub/   GitHub の道具パック: App(JWT → installation token)/ PAT 認証、REST の薄い皮、道具 6 つ
+src/Aizuchi.OpenProject/ OpenProject の道具パック: API キーで Basic 認証、API v3 の薄い皮、道具 4 つ
 src/Aizuchi/          ホスト。環境変数でコネクタとプロバイダを選び、/healthz /readyz を出す
 tests/                純粋関数・JSON 形状・Bot の流れ(偽コネクタ / 偽プロバイダ)のテスト。TUnit(Microsoft.Testing.Platform)
 connectors/slack/     Slack アプリのマニフェストと手順
@@ -161,9 +186,10 @@ k3s の helm-controller なら `HelmChart` CR で同じことができる(`value
 |---|---|
 | `CHAT_CONNECTOR` / `LLM_PROVIDER` | `slack` / `claude`(既定) |
 | `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` | Slack コネクタ |
-| `ANTHROPIC_API_KEY` `CLAUDE_MODEL` `CLAUDE_MAX_TOKENS` `CLAUDE_EFFORT` `CLAUDE_FALLBACKS` `ANTHROPIC_BASE_URL` | Claude プロバイダ |
+| `ANTHROPIC_API_KEY` `CLAUDE_MODEL` `CLAUDE_MAX_TOKENS` `CLAUDE_EFFORT` `CLAUDE_FALLBACKS` `CLAUDE_WEB_SEARCH_MAX_USES` `ANTHROPIC_BASE_URL` | Claude プロバイダ |
 | `BOT_SYSTEM_PROMPT` `BOT_MAX_HISTORY` `BOT_UPDATE_INTERVAL_MS` `BOT_MEMORY_DIR` `BOT_MEMORY_MAX_CHARS` `BOT_CHANNEL_CONTEXT` | 共通 |
 | `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`(PEM)、または `GITHUB_TOKEN` + `GITHUB_OWNERS` | GitHub の道具(任意) |
+| `OPENPROJECT_URL` + `OPENPROJECT_API_KEY` | OpenProject の道具(任意。両方必須) |
 
 ## ヘルスチェック
 
