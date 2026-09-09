@@ -29,8 +29,18 @@ public class OpenProjectTests
 
     private const string Wp = """
         {"total":2,"count":1,"_embedded":{"elements":[
-          {"id":42,"subject":"FAX の自動起票が失敗する","updatedAt":"2026-09-01T10:00:00Z",
-           "_links":{"status":{"title":"New"},"type":{"title":"Bug"},"assignee":{"title":"澤田 澪"}}}]}}
+          {"id":42,"subject":"FAX の自動起票が失敗する","updatedAt":"2026-09-01T10:00:00Z","storyPoints":3,"percentageDone":40,
+           "_links":{"status":{"title":"New"},"type":{"title":"Bug"},"assignee":{"title":"澤田 澪"},"sprint":{"title":"Sprint 12"}}}]}}
+        """;
+
+    private const string Sprints = """
+        {"total":3,"_embedded":{"elements":[
+          {"id":7,"name":"Sprint 11","startDate":"2026-08-01","endDate":"2026-08-14",
+           "_links":{"status":{"href":"/api/v3/statuses/sprint:closed"}}},
+          {"id":8,"name":"Sprint 12","startDate":"2026-08-15","effectiveDate":"2026-08-28",
+           "_links":{"status":{"href":"/api/v3/statuses/sprint:active"}}},
+          {"id":6,"name":"Sprint 10","startDate":"2026-07-18","endDate":"2026-07-31",
+           "_links":{"status":{"href":"/api/v3/statuses/sprint:closed"}}}]}}
         """;
 
     private static async Task<(OpenProjectToolPack Pack, FakeOp Fake)> Pack()
@@ -71,7 +81,7 @@ public class OpenProjectTests
     public async Task 道具のスキーマは正しいJSONで_プロンプトにURLが出る()
     {
         var (pack, _) = await Pack();
-        await Assert.That(pack.Tools.Count).IsEqualTo(4);
+        await Assert.That(pack.Tools.Count).IsEqualTo(6);
         foreach (var t in pack.Tools)
             await Assert.That(JsonDocument.Parse(t.InputSchemaJson).RootElement.GetProperty("type").GetString()).IsEqualTo("object");
         await Assert.That(pack.PromptSection).Contains("https://op.example.com");
@@ -138,6 +148,87 @@ public class OpenProjectTests
         await Assert.That(r.Content).Contains("月末だけ落ちる");
         await Assert.That(r.Content).Contains("コメント (1 件):"); // 属性変更だけの履歴は数えない
         await Assert.That(r.Content).Contains("[田中] (2026-09-02) 再現しました");
+    }
+
+    [Test]
+    public async Task 一覧にストーリーポイントとスプリントが出る()
+    {
+        var (pack, fake) = await Pack();
+        fake.Routes["/api/v3/projects/shop/work_packages"] = (HttpStatusCode.OK, Wp);
+        var r = await Run(pack, "openproject_list", """{"project":"shop"}""");
+        await Assert.That(r.Content).Contains("SP3");
+        await Assert.That(r.Content).Contains("Sprint 12");
+        await Assert.That(r.Content).Contains("進捗 40%");
+    }
+
+    [Test]
+    public async Task スプリントで絞れてページ番号で送る()
+    {
+        var (pack, fake) = await Pack();
+        fake.Routes["/api/v3/projects/shop/work_packages"] = (HttpStatusCode.OK, Wp);
+        await Run(pack, "openproject_list", """{"project":"shop","sprint":8,"page":2}""");
+        var call = Uri.UnescapeDataString(fake.Calls[^1]);
+        await Assert.That(call).Contains("""{"sprint":{"operator":"=","values":["8"]}}""");
+        // offset はページ番号(1 始まり)。件数のオフセットではない
+        await Assert.That(call).Contains("offset=2");
+    }
+
+    [Test]
+    public async Task スプリント一覧は進行中が分かる()
+    {
+        var (pack, fake) = await Pack();
+        fake.Routes["/api/v3/projects/shop/sprints"] = (HttpStatusCode.OK, Sprints);
+        var r = await Run(pack, "openproject_sprints", """{"project":"shop"}""");
+        // 開始日の新しい順
+        await Assert.That(r.Content).StartsWith("- #8 Sprint 12 (2026-08-15 〜 2026-08-28)");
+        await Assert.That(r.Content).Contains("← 進行中");
+        // 進行中は 1 本だけ
+        await Assert.That(r.Content.Split("← 進行中").Length - 1).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task ベロシティはクローズ分のstoryPointsを合計する()
+    {
+        var (pack, fake) = await Pack();
+        fake.Routes["/api/v3/projects/shop/sprints"] = (HttpStatusCode.OK, Sprints);
+        fake.Routes["/api/v3/projects/shop/work_packages"] = (HttpStatusCode.OK, """
+            {"total":3,"_embedded":{"elements":[
+              {"id":1,"subject":"a","storyPoints":3,"_links":{"status":{"title":"Closed"}}},
+              {"id":2,"subject":"b","storyPoints":5,"_links":{"status":{"title":"Closed"}}},
+              {"id":3,"subject":"c","_links":{"status":{"title":"Closed"}}}]}}
+            """);
+        var r = await Run(pack, "openproject_velocity", """{"project":"shop","sprints":2}""");
+        await Assert.That(r.IsError).IsFalse();
+        await Assert.That(r.Content).Contains("8 SP / 完了 3 件(うち 1 件は storyPoints 未設定)");
+        // 新しい 2 本だけ見る
+        await Assert.That(r.Content).Contains("#8 Sprint 12");
+        await Assert.That(r.Content).Contains("#7 Sprint 11");
+        await Assert.That(r.Content).DoesNotContain("Sprint 10");
+        // クローズ扱いだけを数える
+        await Assert.That(Uri.UnescapeDataString(fake.Calls[^1])).Contains("""{"status":{"operator":"c","values":[]}}""");
+    }
+
+    [Test]
+    public async Task Backlogsが無ければその旨を返す()
+    {
+        var (pack, fake) = await Pack();
+        fake.Routes["/api/v3/projects/shop/sprints"] = (HttpStatusCode.OK, """{"total":0,"_embedded":{"elements":[]}}""");
+        var r = await Run(pack, "openproject_velocity", """{"project":"shop"}""");
+        await Assert.That(r.Content).Contains("Backlogs モジュール");
+    }
+
+    [Test]
+    public async Task 詳細にストーリーポイントが出る()
+    {
+        var (pack, fake) = await Pack();
+        fake.Routes["/api/v3/work_packages/42/activities"] = (HttpStatusCode.OK, """{"total":0,"_embedded":{"elements":[]}}""");
+        fake.Routes["/api/v3/work_packages/42"] = (HttpStatusCode.OK, """
+            {"id":42,"subject":"件名","storyPoints":8,
+             "_links":{"status":{"title":"New"},"version":{"title":"Sprint 12"}}}
+            """);
+        var r = await Run(pack, "openproject_get", """{"id":42}""");
+        // sprint リンクが無ければ version で代用する
+        await Assert.That(r.Content).Contains("ストーリーポイント: 8, スプリント: Sprint 12");
     }
 
     [Test]

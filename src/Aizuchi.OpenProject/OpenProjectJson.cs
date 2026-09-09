@@ -7,6 +7,7 @@ namespace Aizuchi.OpenProject;
 [JsonSerializable(typeof(ProjectCollection))]
 [JsonSerializable(typeof(WorkPackageCollection))]
 [JsonSerializable(typeof(ActivityCollection))]
+[JsonSerializable(typeof(SprintCollection))]
 [JsonSerializable(typeof(WorkPackage))]
 [JsonSerializable(typeof(Me))]
 public sealed partial class OpenProjectJson : JsonSerializerContext;
@@ -54,6 +55,12 @@ public sealed class WorkPackage
     public string? StartDate { get; set; }
     public string? DueDate { get; set; }
     public int? PercentageDone { get; set; }
+    /// <summary>
+    /// Backlogs(Scrum)のストーリーポイント。カスタムフィールドではなく core の属性(DB は story_points)。
+    /// プロジェクトで Backlogs が有効で、かつそのタイプが管理画面の Story types に入っているときだけ返る
+    /// (タスクタイプは remainingTime 側なので null になる)。
+    /// </summary>
+    public int? StoryPoints { get; set; }
     public DateTimeOffset? CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     [JsonPropertyName("_links")] public WorkPackageLinks? Links { get; set; }
@@ -67,6 +74,9 @@ public sealed class WorkPackageLinks
     public Link? Assignee { get; set; }
     public Link? Priority { get; set; }
     public Link? Author { get; set; }
+    public Link? Version { get; set; }
+    /// <summary>Backlogs が有効なときだけ付く</summary>
+    public Link? Sprint { get; set; }
 }
 
 public sealed class WorkPackageCollection
@@ -104,6 +114,37 @@ public sealed class ActivityCollection
 public sealed class ActivityElements
 {
     public List<Activity>? Elements { get; set; }
+}
+
+/// <summary>
+/// Backlogs のスプリント。バージョンとは別リソースで /projects/{id}/sprints から引く。
+/// 終了日はバージョン由来の effectiveDate で来ることもあるので両方受ける。
+/// </summary>
+public sealed class Sprint
+{
+    public int Id { get; set; }
+    public string? Name { get; set; }
+    public string? StartDate { get; set; }
+    public string? EndDate { get; set; }
+    public string? EffectiveDate { get; set; }
+    [JsonPropertyName("_links")] public SprintLinks? Links { get; set; }
+}
+
+public sealed class SprintLinks
+{
+    /// <summary>href の末尾が :active なら進行中</summary>
+    public Link? Status { get; set; }
+}
+
+public sealed class SprintCollection
+{
+    public int Total { get; set; }
+    [JsonPropertyName("_embedded")] public SprintElements? Embedded { get; set; }
+}
+
+public sealed class SprintElements
+{
+    public List<Sprint>? Elements { get; set; }
 }
 
 /// <summary>起動時の疎通確認に使う /users/me</summary>

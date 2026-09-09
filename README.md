@@ -67,8 +67,10 @@ PAT で済ませるなら `github.auth=token`、Secret のキー `github-token`�
 |---|---|
 | `openproject_projects` | プロジェクト一覧。識別子の揺れはまずこれで確かめる |
 | `openproject_search` | 作業パッケージの横断検索(既定は未完了のみ) |
-| `openproject_list` | プロジェクト内の一覧(更新の新しい順) |
+| `openproject_list` | プロジェクト内の一覧(更新の新しい順。スプリントで絞れる) |
 | `openproject_get` | 1 件の詳細と、人が書いたコメント |
+| `openproject_sprints` | スプリント一覧(Backlogs)。進行中が分かる |
+| `openproject_velocity` | スプリント別ベロシティ(クローズ分の `storyPoints` 合計) |
 
 作成も更新もできない。読める範囲は API キーを作ったユーザーの権限に閉じるので、
 **ボット用のユーザーを作って必要なプロジェクトだけ見せる**のが安全。
@@ -81,6 +83,22 @@ PAT で済ませるなら `github.auth=token`、Secret のキー `github-token`�
 
 認証は Basic で、ユーザー名は `apikey` 固定・パスワードが API キー。起動時に `/api/v3/users/me` を引いて
 通らなければ落とすので、キーの誤りは起動時に分かる。
+
+### ストーリーポイントとスプリント
+
+`storyPoints` は Backlogs(Scrum)の **core の属性**でカスタムフィールドではない。返るのは次の両方を満たすときだけ:
+
+- プロジェクトで Backlogs モジュールが有効
+- そのタイプが管理画面の **Story types** に含まれる(タスクタイプは `remainingTime` 側なので `null` になる)
+
+スプリントはバージョンではなく Backlogs 専用リソース(`/api/v3/projects/{id}/sprints`)から引く。
+進行中の判定は `_links.status.href` の末尾が `:active` かどうか。作業パッケージ側の絞り込みは
+`filters=[{"sprint":{"operator":"=","values":["<id>"]}}]`。
+**ページングの `offset` はページ番号(1 始まり)**で、件数のオフセットではない。
+
+ベロシティは「スプリント別に、クローズ扱いの作業パッケージの `storyPoints` を合計」= OpenProject の
+バーンダウンと同じ数え方。**スプリント単位が正で、週あたりは換算値でしかない**。完了日が API から
+素直に取れないため、日付で切った集計は `updatedAt` 代用になり誤差が出る。
 
 ## Web 検索(既定で無効)
 

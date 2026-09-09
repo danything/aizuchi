@@ -23,14 +23,18 @@ public sealed class OpenProjectToolPack : IToolPack
                     "query": {"type": "string"},
                     "project": {"type": "string", "description": "プロジェクトの識別子か ID。指定するとその中だけ"},
                     "status": {"type": "string", "enum": ["open", "closed", "all"]},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 50}
+                    "sprint": {"type": "integer", "description": "スプリント ID。openproject_sprints で調べる"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                    "page": {"type": "integer", "minimum": 1, "description": "1 始まりのページ番号"}
                     """, ["query"]),
                 Search),
             new Tool("openproject_list", "プロジェクト内の作業パッケージ一覧(更新の新しい順)",
                 Schema("""
                     "project": {"type": "string", "description": "プロジェクトの識別子か ID"},
                     "status": {"type": "string", "enum": ["open", "closed", "all"]},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 50}
+                    "sprint": {"type": "integer", "description": "スプリント ID。openproject_sprints で調べる"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                    "page": {"type": "integer", "minimum": 1, "description": "1 始まりのページ番号"}
                     """, ["project"]),
                 List),
             new Tool("openproject_get", "作業パッケージ 1 件の詳細とコメント",
@@ -38,6 +42,17 @@ public sealed class OpenProjectToolPack : IToolPack
                     "id": {"type": "integer"}
                     """, ["id"]),
                 Get),
+            new Tool("openproject_sprints", "プロジェクトのスプリント一覧(Backlogs)。進行中のものが分かる",
+                Schema("""
+                    "project": {"type": "string", "description": "プロジェクトの識別子か ID"}
+                    """, ["project"]),
+                SprintList),
+            new Tool("openproject_velocity", "スプリント別のベロシティ。クローズ扱いの作業パッケージの storyPoints を合計する",
+                Schema("""
+                    "project": {"type": "string", "description": "プロジェクトの識別子か ID"},
+                    "sprints": {"type": "integer", "minimum": 1, "maximum": 20, "description": "新しい方から何スプリント見るか(既定 6)"}
+                    """, ["project"]),
+                Velocity),
         ];
     }
 
@@ -53,6 +68,11 @@ public sealed class OpenProjectToolPack : IToolPack
         - プロジェクトは識別子(URL に出る英数字)で指定する。曖昧なら openproject_projects で確かめる
         - 横断で探すなら openproject_search、プロジェクトの中を見るなら openproject_list
         - 既定では未完了(open)だけを見る。完了分も要るときは status を指定する
+        - ストーリーポイントは storyPoints。本文に書かれた「見積 0.5日 (SP1)」のような表記は
+          移行前の手運用なので、storyPoints が出ているならそちらは読まない
+        - ベロシティはスプリント単位が正。週あたりに直した値は換算でしかない
+        - 完了日は API から素直に取れない。日付で切った集計は updatedAt 代用になり誤差が出るので、
+          そう断ってから答える
         - 結果は要点だけを引用し、必ずリンクを添える
         """;
 
@@ -79,13 +99,13 @@ public sealed class OpenProjectToolPack : IToolPack
     {
         var query = Str(a, "query") ?? throw new OpenProjectException("query が要ります");
         var scope = Str(a, "project") is { } p ? $"/projects/{Uri.EscapeDataString(p)}" : "";
-        var filters = new List<string> { StatusFilter(Str(a, "status") ?? "open") };
+        var filters = Filters(a);
 
         // 全文検索のフィルタ名はバージョンで違う。search で試し、通らなければ件名 / ID に落とす
         WorkPackageCollection res;
-        try { res = await Query(scope, [.. filters, Filter("search", "**", query)], Limit(a, 20), ct); }
+        try { res = await QueryPage(scope, [.. filters, Filter("search", "**", query)], Limit(a, 20), Page(a), ct); }
         catch (OpenProjectException)
-        { res = await Query(scope, [.. filters, Filter("subjectOrId", "**", query)], Limit(a, 20), ct); }
+        { res = await QueryPage(scope, [.. filters, Filter("subjectOrId", "**", query)], Limit(a, 20), Page(a), ct); }
 
         return Render(res, "該当なし");
     }
@@ -93,8 +113,8 @@ public sealed class OpenProjectToolPack : IToolPack
     private async Task<string> List(JsonElement a, CancellationToken ct)
     {
         var project = Str(a, "project") ?? throw new OpenProjectException("project(識別子か ID)が要ります");
-        var res = await Query($"/projects/{Uri.EscapeDataString(project)}",
-            [StatusFilter(Str(a, "status") ?? "open")], Limit(a, 20), ct);
+        var res = await QueryPage($"/projects/{Uri.EscapeDataString(project)}",
+            Filters(a), Limit(a, 20), Page(a), ct);
         return Render(res, "該当なし");
     }
 
@@ -121,14 +141,91 @@ public sealed class OpenProjectToolPack : IToolPack
         return Format.Cap(sb.ToString(), MaxChars * 2);
     }
 
+    private async Task<string> SprintList(JsonElement a, CancellationToken ct)
+    {
+        var project = Str(a, "project") ?? throw new OpenProjectException("project(識別子か ID)が要ります");
+        var sprints = await FetchSprints(project, ct);
+        if (sprints.Count == 0)
+            return "スプリントがありません(プロジェクトで Backlogs モジュールが有効か確認してください)";
+        var sb = new StringBuilder();
+        foreach (var s in Recent(sprints, sprints.Count))
+            sb.AppendLine($"- #{s.Id} {s.Name} ({Format.Period(s)}) {Format.SprintStatus(s)}{(Format.IsActive(s) ? " ← 進行中" : "")}");
+        return Format.Cap(sb.ToString(), MaxChars);
+    }
+
+    /// <summary>
+    /// スプリント別のベロシティ。クローズ扱いの WP の storyPoints を合計する
+    /// (OpenProject のバーンダウンと同じ数え方)。
+    /// </summary>
+    private async Task<string> Velocity(JsonElement a, CancellationToken ct)
+    {
+        var project = Str(a, "project") ?? throw new OpenProjectException("project(識別子か ID)が要ります");
+        var sprints = await FetchSprints(project, ct);
+        if (sprints.Count == 0)
+            return "スプリントがありません(プロジェクトで Backlogs モジュールが有効か確認してください)";
+
+        var scope = $"/projects/{Uri.EscapeDataString(project)}";
+        var sb = new StringBuilder("スプリント別ベロシティ(クローズ扱いの storyPoints 合計):\n");
+        var unset = 0;
+        foreach (var s in Recent(sprints, Math.Clamp(Int(a, "sprints") ?? 6, 1, 20)))
+        {
+            var done = await QueryAll(scope, [SprintFilter(s.Id), Filter("status", "c")], ct);
+            var points = done.Sum(w => w.StoryPoints ?? 0);
+            var missing = done.Count(w => w.StoryPoints is null);
+            unset += missing;
+            sb.Append($"- #{s.Id} {s.Name} ({Format.Period(s)}){(Format.IsActive(s) ? " [進行中]" : "")}: ")
+              .Append($"{points} SP / 完了 {done.Count} 件")
+              .AppendLine(missing > 0 ? $"(うち {missing} 件は storyPoints 未設定)" : "");
+        }
+        if (unset > 0)
+            sb.AppendLine("\n※ storyPoints が未設定の作業パッケージは 0 として数えています。" +
+                "そのタイプが管理画面の Story types に入っていないと storyPoints は返りません(タスクは remainingTime 側)");
+        sb.AppendLine("※ 週あたりに直す場合はスプリント期間で割った換算値です。完了日は API から取れないため、日付で切ると updatedAt 代用の誤差が出ます");
+        return Format.Cap(sb.ToString(), MaxChars);
+    }
+
+    private async Task<List<Sprint>> FetchSprints(string project, CancellationToken ct) =>
+        (await _client.GetAsync($"/projects/{Uri.EscapeDataString(project)}/sprints",
+            OpenProjectJson.Default.SprintCollection, ct)).Embedded?.Elements ?? [];
+
+    /// <summary>開始日の新しい順。日付が無いものは後ろに送る</summary>
+    private static IEnumerable<Sprint> Recent(List<Sprint> sprints, int take) =>
+        sprints.OrderByDescending(s => s.StartDate ?? "").ThenByDescending(s => s.Id).Take(take);
+
     // ---- 問い合わせの組み立て ----
 
-    private Task<WorkPackageCollection> Query(string scope, string[] filters, int limit, CancellationToken ct)
+    private Task<WorkPackageCollection> QueryPage(string scope, string[] filters, int pageSize, int page, CancellationToken ct)
     {
+        // OpenProject の offset はページ番号(1 始まり)。件数のオフセットではない
         var q = $"?filters={Uri.EscapeDataString("[" + string.Join(",", filters) + "]")}" +
-                $"&pageSize={limit}&sortBy={Uri.EscapeDataString("""[["updatedAt","desc"]]""")}";
+                $"&pageSize={pageSize}&offset={page}&sortBy={Uri.EscapeDataString("""[["updatedAt","desc"]]""")}";
         return _client.GetAsync(scope + "/work_packages" + q, OpenProjectJson.Default.WorkPackageCollection, ct);
     }
+
+    /// <summary>集計用に全ページ取る。返りが pageSize 未満になったら終わり</summary>
+    private async Task<List<WorkPackage>> QueryAll(string scope, string[] filters, CancellationToken ct)
+    {
+        const int pageSize = 100, maxPages = 50;
+        var all = new List<WorkPackage>();
+        for (var page = 1; page <= maxPages; page++)
+        {
+            var items = (await QueryPage(scope, filters, pageSize, page, ct)).Embedded?.Elements ?? [];
+            all.AddRange(items);
+            if (items.Count < pageSize) break;
+        }
+        return all;
+    }
+
+    /// <summary>一覧・検索で共通の絞り込み(状態とスプリント)</summary>
+    private static string[] Filters(JsonElement a)
+    {
+        var filters = new List<string> { StatusFilter(Str(a, "status") ?? "open") };
+        if (Int(a, "sprint") is { } sprint) filters.Add(SprintFilter(sprint));
+        return [.. filters];
+    }
+
+    private static string SprintFilter(int id) =>
+        Filter("sprint", "=", id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     /// <summary>status は値ではなく演算子で表す(o = 未完了、c = 完了)</summary>
     private static string StatusFilter(string status) => status switch
@@ -160,6 +257,9 @@ public sealed class OpenProjectToolPack : IToolPack
         a.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
 
     private static int Limit(JsonElement a, int fallback) => Math.Clamp(Int(a, "limit") ?? fallback, 1, 50);
+
+    /// <summary>1 始まりのページ番号</summary>
+    private static int Page(JsonElement a) => Math.Max(1, Int(a, "page") ?? 1);
 
     /// <summary>例外はツールの失敗として LLM に返す(会話は止めない)</summary>
     private sealed class Tool(string name, string description, string schema, Func<JsonElement, CancellationToken, Task<string>> run) : ITool
@@ -195,16 +295,34 @@ public static class Format
     {
         var l = w.Links;
         var kind = l?.Type?.Title is { } t ? $"[{t}]" : "";
-        var who = l?.Assignee?.Title is { } who2 ? $", 担当: {who2}" : "";
-        return $"- #{w.Id} ({l?.Status?.Title}) {w.Subject} {kind}{who}, 更新 {Date(w.UpdatedAt)} <{baseUrl}/work_packages/{w.Id}>";
+        var sp = w.StoryPoints is { } p ? $", SP{p}" : "";
+        var iter = Iteration(w) is { } it ? $", {it}" : "";
+        var who = l?.Assignee?.Title is { } a ? $", 担当: {a}" : "";
+        var done = w.PercentageDone is > 0 and { } d ? $", 進捗 {d}%" : "";
+        return $"- #{w.Id} ({l?.Status?.Title}) {w.Subject} {kind}{sp}{iter}{who}{done}, 更新 {Date(w.UpdatedAt)} <{baseUrl}/work_packages/{w.Id}>";
     }
+
+    /// <summary>スプリント。Backlogs が無いプロジェクトではバージョンで代用する</summary>
+    public static string? Iteration(WorkPackage w) =>
+        w.Links?.Sprint?.Title ?? w.Links?.Version?.Title;
+
+    public static string Period(Sprint s) =>
+        $"{s.StartDate ?? "-"} 〜 {s.EndDate ?? s.EffectiveDate ?? "-"}";
+
+    public static bool IsActive(Sprint s) =>
+        s.Links?.Status?.Href?.EndsWith(":active", StringComparison.Ordinal) == true;
+
+    public static string SprintStatus(Sprint s) =>
+        s.Links?.Status?.Title ?? s.Links?.Status?.Href?.Split(':').LastOrDefault() ?? "-";
 
     public static string Header(WorkPackage w, string baseUrl)
     {
         var l = w.Links;
         var dates = (w.StartDate ?? w.DueDate) is null ? "" : $"\n開始 {w.StartDate ?? "-"} / 期日 {w.DueDate ?? "-"}, 進捗 {w.PercentageDone ?? 0}%";
+        var sp = w.StoryPoints is { } p ? $"{p}" : "未設定";
         return $"#{w.Id} ({l?.Status?.Title}) {w.Subject}\n" +
-               $"{l?.Type?.Title} / {l?.Priority?.Title}, プロジェクト: {l?.Project?.Title}, 作成者: {l?.Author?.Title}, 担当: {l?.Assignee?.Title ?? "なし"}{dates}\n" +
+               $"{l?.Type?.Title} / {l?.Priority?.Title}, プロジェクト: {l?.Project?.Title}, 作成者: {l?.Author?.Title}, 担当: {l?.Assignee?.Title ?? "なし"}\n" +
+               $"ストーリーポイント: {sp}, スプリント: {Iteration(w) ?? "なし"}{dates}\n" +
                $"作成 {Date(w.CreatedAt)}, 更新 {Date(w.UpdatedAt)}\n<{baseUrl}/work_packages/{w.Id}>";
     }
 }
