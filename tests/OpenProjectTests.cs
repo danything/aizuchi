@@ -33,14 +33,24 @@ public class OpenProjectTests
            "_links":{"status":{"title":"New"},"type":{"title":"Bug"},"assignee":{"title":"澤田 澪"},"sprint":{"title":"Sprint 12"}}}]}}
         """;
 
+    // 実物と同じ形。スプリント API は他プロジェクト(#4)定義のものだけを返す
     private const string Sprints = """
-        {"total":3,"_embedded":{"elements":[
-          {"id":7,"name":"Sprint 11","startDate":"2026-08-01","endDate":"2026-08-14",
-           "_links":{"status":{"href":"/api/v3/statuses/sprint:closed"}}},
-          {"id":8,"name":"Sprint 12","startDate":"2026-08-15","effectiveDate":"2026-08-28",
-           "_links":{"status":{"href":"/api/v3/statuses/sprint:active"}}},
-          {"id":6,"name":"Sprint 10","startDate":"2026-07-18","endDate":"2026-07-31",
-           "_links":{"status":{"href":"/api/v3/statuses/sprint:closed"}}}]}}
+        {"total":2,"_embedded":{"elements":[
+          {"id":2,"name":"Rebuilt 1","startDate":"2026-07-18",
+           "_links":{"status":{"href":"urn:openproject-org:api:v3:sprints:status:completed"},
+                     "definingWorkspace":{"href":"/api/v3/projects/4"}}},
+          {"id":1,"name":"Nissan 1","startDate":"2026-07-18",
+           "_links":{"status":{"href":"urn:openproject-org:api:v3:sprints:status:active"},
+                     "definingWorkspace":{"href":"/api/v3/projects/4"}}}]}}
+        """;
+
+    // 割当は一覧 API に出てこないスプリント。これが実態
+    private const string Closed = """
+        {"total":4,"_embedded":{"elements":[
+          {"id":1,"subject":"a","storyPoints":3,"_links":{"status":{"title":"終了"},"sprint":{"href":"/api/v3/sprints/7","title":"Sprints 7"}}},
+          {"id":2,"subject":"b","storyPoints":5,"_links":{"status":{"title":"終了"},"sprint":{"href":"/api/v3/sprints/7","title":"Sprints 7"}}},
+          {"id":3,"subject":"c","_links":{"status":{"title":"終了"},"sprint":{"href":"/api/v3/sprints/6","title":"Sprints 6"}}},
+          {"id":4,"subject":"d","storyPoints":2,"_links":{"status":{"title":"終了"}}}]}}
         """;
 
     private static async Task<(OpenProjectToolPack Pack, FakeOp Fake)> Pack()
@@ -174,47 +184,53 @@ public class OpenProjectTests
     }
 
     [Test]
-    public async Task スプリント一覧は進行中が分かる()
+    public async Task スプリント一覧はAPIの返しと実際の割当を並べる()
     {
         var (pack, fake) = await Pack();
         fake.Routes["/api/v3/projects/shop/sprints"] = (HttpStatusCode.OK, Sprints);
+        fake.Routes["/api/v3/projects/shop/work_packages"] = (HttpStatusCode.OK, Closed);
         var r = await Run(pack, "openproject_sprints", """{"project":"shop"}""");
-        // 開始日の新しい順
-        await Assert.That(r.Content).StartsWith("- #8 Sprint 12 (2026-08-15 〜 2026-08-28)");
-        await Assert.That(r.Content).Contains("← 進行中");
-        // 進行中は 1 本だけ
-        await Assert.That(r.Content.Split("← 進行中").Length - 1).IsEqualTo(1);
+
+        await Assert.That(r.Content).Contains("- #1 Nissan 1 (2026-07-18 〜 -) active (定義元プロジェクト #4) ← 進行中");
+        await Assert.That(r.Content).Contains("- #2 Rebuilt 1");
+        // 一覧 API に出てこないスプリントが実際には使われている、が見えること
+        await Assert.That(r.Content).Contains("Sprints 7: 2 件");
+        await Assert.That(r.Content).Contains("Sprints 6: 1 件");
+        await Assert.That(r.Content).Contains("スプリント未割当: 1 件");
     }
 
     [Test]
-    public async Task ベロシティはクローズ分のstoryPointsを合計する()
+    public async Task ベロシティは一覧APIではなく実際の割当で束ねる()
     {
         var (pack, fake) = await Pack();
         fake.Routes["/api/v3/projects/shop/sprints"] = (HttpStatusCode.OK, Sprints);
-        fake.Routes["/api/v3/projects/shop/work_packages"] = (HttpStatusCode.OK, """
-            {"total":3,"_embedded":{"elements":[
-              {"id":1,"subject":"a","storyPoints":3,"_links":{"status":{"title":"Closed"}}},
-              {"id":2,"subject":"b","storyPoints":5,"_links":{"status":{"title":"Closed"}}},
-              {"id":3,"subject":"c","_links":{"status":{"title":"Closed"}}}]}}
-            """);
-        var r = await Run(pack, "openproject_velocity", """{"project":"shop","sprints":2}""");
+        fake.Routes["/api/v3/projects/shop/work_packages"] = (HttpStatusCode.OK, Closed);
+        var r = await Run(pack, "openproject_velocity", """{"project":"shop"}""");
         await Assert.That(r.IsError).IsFalse();
-        await Assert.That(r.Content).Contains("8 SP / 完了 3 件(うち 1 件は storyPoints 未設定)");
-        // 新しい 2 本だけ見る
-        await Assert.That(r.Content).Contains("#8 Sprint 12");
-        await Assert.That(r.Content).Contains("#7 Sprint 11");
-        await Assert.That(r.Content).DoesNotContain("Sprint 10");
+
+        // 一覧 API が返す Nissan 1 / Rebuilt 1 ではなく、割当先で束ねる
+        await Assert.That(r.Content).Contains("- Sprints 7: 8 SP / 完了 2 件");
+        await Assert.That(r.Content).Contains("- Sprints 6: 0 SP / 完了 1 件(storyPoints 設定済み 0 件)");
+        await Assert.That(r.Content).Contains("- スプリント未割当: 2 SP / 完了 1 件");
+        await Assert.That(r.Content).DoesNotContain("Nissan 1");
+        // 未割当は最後
+        await Assert.That(r.Content.IndexOf("Sprints 6")).IsLessThan(r.Content.IndexOf("スプリント未割当"));
         // クローズ扱いだけを数える
         await Assert.That(Uri.UnescapeDataString(fake.Calls[^1])).Contains("""{"status":{"operator":"c","values":[]}}""");
     }
 
     [Test]
-    public async Task Backlogsが無ければその旨を返す()
+    public async Task storyPointsが全部未設定なら算出できないと言う()
     {
         var (pack, fake) = await Pack();
-        fake.Routes["/api/v3/projects/shop/sprints"] = (HttpStatusCode.OK, """{"total":0,"_embedded":{"elements":[]}}""");
+        fake.Routes["/api/v3/projects/shop/work_packages"] = (HttpStatusCode.OK, """
+            {"total":2,"_embedded":{"elements":[
+              {"id":1,"subject":"a","_links":{"status":{"title":"終了"},"sprint":{"href":"/api/v3/sprints/7","title":"Sprints 7"}}},
+              {"id":2,"subject":"b","_links":{"status":{"title":"終了"},"sprint":{"href":"/api/v3/sprints/7","title":"Sprints 7"}}}]}}
+            """);
         var r = await Run(pack, "openproject_velocity", """{"project":"shop"}""");
-        await Assert.That(r.Content).Contains("Backlogs モジュール");
+        await Assert.That(r.Content).Contains("storyPoints が 1 件も設定されていません");
+        await Assert.That(r.Content).Contains("Story types");
     }
 
     [Test]

@@ -134,6 +134,8 @@ public sealed class SprintLinks
 {
     /// <summary>href の末尾が :active なら進行中</summary>
     public Link? Status { get; set; }
+    /// <summary>定義元プロジェクト。他プロジェクトのスプリントが共有で出てくることがある</summary>
+    public Link? DefiningWorkspace { get; set; }
 }
 
 public sealed class SprintCollection

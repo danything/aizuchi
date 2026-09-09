@@ -141,15 +141,29 @@ public sealed class OpenProjectToolPack : IToolPack
         return Format.Cap(sb.ToString(), MaxChars * 2);
     }
 
+    /// <summary>
+    /// スプリントは 2 つの見方を並べる。/projects/{id}/sprints は他プロジェクト定義のものを
+    /// 共有で返す一方、実際に割り当てられているスプリントが漏れることがあるため
+    /// (作業パッケージ側が唯一の実態)。
+    /// </summary>
     private async Task<string> SprintList(JsonElement a, CancellationToken ct)
     {
         var project = Str(a, "project") ?? throw new OpenProjectException("project(識別子か ID)が要ります");
-        var sprints = await FetchSprints(project, ct);
-        if (sprints.Count == 0)
-            return "スプリントがありません(プロジェクトで Backlogs モジュールが有効か確認してください)";
         var sb = new StringBuilder();
+
+        var sprints = await FetchSprints(project, ct);
+        sb.AppendLine("スプリント API が返すもの:");
+        if (sprints.Count == 0) sb.AppendLine("  (なし。Backlogs モジュールが無効かもしれません)");
         foreach (var s in Recent(sprints, sprints.Count))
-            sb.AppendLine($"- #{s.Id} {s.Name} ({Format.Period(s)}) {Format.SprintStatus(s)}{(Format.IsActive(s) ? " ← 進行中" : "")}");
+            sb.AppendLine($"  - #{s.Id} {s.Name} ({Format.Period(s)}) {Format.SprintStatus(s)}" +
+                          $"{Format.DefinedIn(s)}{(Format.IsActive(s) ? " ← 進行中" : "")}");
+
+        var assigned = Group(await QueryAll($"/projects/{Uri.EscapeDataString(project)}", [Filter("status", "*")], ct));
+        sb.AppendLine();
+        sb.AppendLine("作業パッケージに実際に割り当てられているもの:");
+        if (assigned.Count == 0) sb.AppendLine("  (なし)");
+        foreach (var g in assigned)
+            sb.AppendLine($"  - {g.Name}: {g.Items.Count} 件");
         return Format.Cap(sb.ToString(), MaxChars);
     }
 
@@ -157,32 +171,47 @@ public sealed class OpenProjectToolPack : IToolPack
     /// スプリント別のベロシティ。クローズ扱いの WP の storyPoints を合計する
     /// (OpenProject のバーンダウンと同じ数え方)。
     /// </summary>
+    /// <summary>
+    /// スプリント別ベロシティ。スプリント一覧 API は実際の割当と食い違うことがあるので、
+    /// クローズ扱いの作業パッケージを全部引いてから、その sprint リンクで束ねる。
+    /// </summary>
     private async Task<string> Velocity(JsonElement a, CancellationToken ct)
     {
         var project = Str(a, "project") ?? throw new OpenProjectException("project(識別子か ID)が要ります");
-        var sprints = await FetchSprints(project, ct);
-        if (sprints.Count == 0)
-            return "スプリントがありません(プロジェクトで Backlogs モジュールが有効か確認してください)";
+        var done = await QueryAll($"/projects/{Uri.EscapeDataString(project)}", [Filter("status", "c")], ct);
+        if (done.Count == 0) return "クローズ扱いの作業パッケージがありません";
 
-        var scope = $"/projects/{Uri.EscapeDataString(project)}";
+        var groups = Group(done).Take(Math.Clamp(Int(a, "sprints") ?? 6, 1, 20)).ToList();
         var sb = new StringBuilder("スプリント別ベロシティ(クローズ扱いの storyPoints 合計):\n");
-        var unset = 0;
-        foreach (var s in Recent(sprints, Math.Clamp(Int(a, "sprints") ?? 6, 1, 20)))
+        foreach (var g in groups)
         {
-            var done = await QueryAll(scope, [SprintFilter(s.Id), Filter("status", "c")], ct);
-            var points = done.Sum(w => w.StoryPoints ?? 0);
-            var missing = done.Count(w => w.StoryPoints is null);
-            unset += missing;
-            sb.Append($"- #{s.Id} {s.Name} ({Format.Period(s)}){(Format.IsActive(s) ? " [進行中]" : "")}: ")
-              .Append($"{points} SP / 完了 {done.Count} 件")
-              .AppendLine(missing > 0 ? $"(うち {missing} 件は storyPoints 未設定)" : "");
+            var set = g.Items.Count(w => w.StoryPoints is not null);
+            sb.Append($"- {g.Name}: {g.Items.Sum(w => w.StoryPoints ?? 0)} SP / 完了 {g.Items.Count} 件")
+              .AppendLine(set == g.Items.Count ? "" : $"(storyPoints 設定済み {set} 件)");
         }
-        if (unset > 0)
-            sb.AppendLine("\n※ storyPoints が未設定の作業パッケージは 0 として数えています。" +
-                "そのタイプが管理画面の Story types に入っていないと storyPoints は返りません(タスクは remainingTime 側)");
+
+        if (done.All(w => w.StoryPoints is null))
+            sb.AppendLine("\n※ storyPoints が 1 件も設定されていません。API はフィールド自体を返しているので、" +
+                "値が未入力か、そのタイプが管理画面の Story types に含まれていません(タスクは remainingTime 側)。" +
+                "この状態ではベロシティは出せないので、件数で見るか、先に入力を進めてください");
+        else
+            sb.AppendLine("\n※ storyPoints 未設定のものは 0 として数えています");
         sb.AppendLine("※ 週あたりに直す場合はスプリント期間で割った換算値です。完了日は API から取れないため、日付で切ると updatedAt 代用の誤差が出ます");
         return Format.Cap(sb.ToString(), MaxChars);
     }
+
+    private sealed record SprintGroup(string Key, string Name, List<WorkPackage> Items);
+
+    /// <summary>
+    /// 作業パッケージを割り当てスプリントで束ねる。未割当は最後に回す。
+    /// リンクは要素ごとに別インスタンスなので、束ねるキーは href から取った ID にする。
+    /// </summary>
+    private static List<SprintGroup> Group(List<WorkPackage> items) =>
+        [.. items.GroupBy(w => Format.SprintId(w.Links?.Sprint) ?? "")
+            .Select(g => new SprintGroup(
+                g.Key, g.First().Links?.Sprint?.Title ?? "スプリント未割当", [.. g]))
+            .OrderBy(g => g.Key.Length == 0)
+            .ThenByDescending(g => int.TryParse(g.Key, out var n) ? n : 0)];
 
     private async Task<List<Sprint>> FetchSprints(string project, CancellationToken ct) =>
         (await _client.GetAsync($"/projects/{Uri.EscapeDataString(project)}/sprints",
@@ -314,6 +343,14 @@ public static class Format
 
     public static string SprintStatus(Sprint s) =>
         s.Links?.Status?.Title ?? s.Links?.Status?.Href?.Split(':').LastOrDefault() ?? "-";
+
+    /// <summary>href の末尾の数値。/api/v3/sprints/7 → 7</summary>
+    public static string? SprintId(Link? l) => l?.Href?.Split('/').LastOrDefault();
+
+    /// <summary>他プロジェクトで定義されたスプリントが共有で出てくるので、定義元を添える</summary>
+    public static string DefinedIn(Sprint s) =>
+        s.Links?.DefiningWorkspace?.Href?.Split('/').LastOrDefault() is { Length: > 0 } id
+            ? $" (定義元プロジェクト #{id})" : "";
 
     public static string Header(WorkPackage w, string baseUrl)
     {
