@@ -26,6 +26,9 @@ services:
       # --- openproject (任意。セルフホストの URL と API キー) ---
       #OPENPROJECT_URL: https://openproject.example.com
       #OPENPROJECT_API_KEY: ...
+      # --- anarlog (任意。webhook の署名鍵 whsec_… と投稿先チャンネル ID) ---
+      #ANARLOG_WEBHOOK_SECRET: whsec_...
+      #ANARLOG_SLACK_CHANNEL: C0XXXXXXX
       # --- bot 共通 ---
       #BOT_SYSTEM_PROMPT: 常に関西弁で。
       #BOT_MAX_HISTORY: "50"

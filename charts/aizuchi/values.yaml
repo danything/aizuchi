@@ -75,6 +75,20 @@ openproject:
   # API キーは existingSecret のキー openproject-api-key(OpenProject の
   # 「マイアカウント → アクセストークン → API」で作る)
 
+# 外部サービスからの webhook を受ける。有効にすると Service と、/webhooks/ だけを通す
+# IngressRoute(Traefik)を作る。会話ボットとしては要らないので既定は無効
+webhooks:
+  enabled: false
+  # 受け口のホスト名。URL は https://<host>/webhooks/<source>
+  host: ""
+
+# Anarlog(会議メモ)の AI 要約を Slack に流す。有料の Slack 連携の置き換え。webhooks.enabled も要る
+anarlog:
+  enabled: false
+  # 投稿先チャンネル ID(C0…)。ボットをそのチャンネルに招待しておく
+  channel: ""
+  # 署名鍵は existingSecret のキー anarlog-webhook-secret(Anarlog が端点作成時に一度だけ表示する whsec_…)
+
 # そのまま container.env に足す
 extraEnv: []
 

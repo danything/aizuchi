@@ -110,3 +110,36 @@ public interface IReplyDraft
 
     Task FailAsync(string reason, CancellationToken ct);
 }
+
+/// <summary>
+/// 外部サービスからの webhook を受ける口(Anarlog など)。/webhooks/{Name} に届いた要求を
+/// 検証 → 解釈 → チャンネルへの投稿文に変えるところまでを 1 つに閉じる。
+/// 本文は生のバイト列で受ける。署名の検証は生の本文に対して行うため。
+/// </summary>
+public interface IWebhookSource
+{
+    /// <summary>URL の /webhooks/{Name} になる。英小文字</summary>
+    string Name { get; }
+    Task<WebhookOutcome> HandleAsync(WebhookRequest request, CancellationToken ct);
+}
+
+/// <param name="Header">ヘッダ名 → 値。無ければ null。名前の大小は区別しない</param>
+/// <param name="Body">生の本文。署名検証に使うので手を加えない</param>
+public sealed record WebhookRequest(Func<string, string?> Header, ReadOnlyMemory<byte> Body);
+
+/// <summary>受信の結果。投稿するか、黙って 200 を返すか、拒否するか</summary>
+public abstract record WebhookOutcome
+{
+    /// <summary>チャンネルに投稿して 200</summary>
+    public sealed record Post(string Channel, string Markdown) : WebhookOutcome;
+    /// <summary>投稿せず 200(処理済み、投稿するものが無い、など)</summary>
+    public sealed record Ignore(string Reason) : WebhookOutcome;
+    /// <summary>その状態コードで拒否。署名不一致は 401、壊れた本文は 400</summary>
+    public sealed record Reject(int Status, string Reason) : WebhookOutcome;
+}
+
+/// <summary>会話の外からチャンネルへ投稿する。webhook 通知の出口</summary>
+public interface IChannelPoster
+{
+    Task PostAsync(string channel, string markdown, CancellationToken ct);
+}

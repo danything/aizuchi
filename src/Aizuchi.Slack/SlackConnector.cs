@@ -7,7 +7,7 @@ namespace Aizuchi.Slack;
 /// Slack コネクタ。Socket Mode で受けたイベントのうち返すべきものだけを IncomingMessage にして渡す。
 /// 反応条件・重複排除・スレッド追従の判定はここに閉じる。
 /// </summary>
-public sealed class SlackConnector(SlackApi api, SlackOptions options, int channelContext, ILogger log) : IChatConnector
+public sealed class SlackConnector(SlackApi api, SlackOptions options, int channelContext, ILogger log) : IChatConnector, IChannelPoster
 {
     private readonly RecentKeys _seen = new(2000);
     private SocketModeClient? _socket;
@@ -55,4 +55,12 @@ public sealed class SlackConnector(SlackApi api, SlackOptions options, int chann
         await handler.HandleAsync(new IncomingMessage($"{channel}:{threadTs ?? ev.Ts}", channel, text, conversation), ct);
     }
 
+    /// <summary>webhook 通知などをチャンネルに出す。長ければ続きを最初の投稿のスレッドに入れる</summary>
+    public async Task PostAsync(string channel, string markdown, CancellationToken ct)
+    {
+        var parts = SlackText.Split(Mrkdwn.FromMarkdown(markdown));
+        var ts = await api.PostMessage(channel, parts[0], null, ct);
+        foreach (var p in parts.Skip(1))
+            await api.PostMessage(channel, p, ts, ct);
+    }
 }

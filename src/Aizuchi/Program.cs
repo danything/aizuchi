@@ -1,3 +1,4 @@
+using Aizuchi.Anarlog;
 using Aizuchi.Claude;
 using Aizuchi.Core;
 using Aizuchi.GitHub;
@@ -30,6 +31,7 @@ ILlmProvider provider;
 BotOptions options;
 GitHubOptions? github;
 OpenProjectOptions? openProject;
+AnarlogOptions? anarlog;
 try
 {
     Func<string, string?> env = Environment.GetEnvironmentVariable;
@@ -44,6 +46,7 @@ try
     provider = makeProvider(env);
     github = GitHubOptions.FromEnvironment(env);
     openProject = OpenProjectOptions.FromEnvironment(env);
+    anarlog = AnarlogOptions.FromEnvironment(env);
 }
 catch (ConfigException ex)
 {
@@ -109,6 +112,28 @@ var bot = new Bot(provider, options, memory, packs, log);
 app.MapGet("/healthz", () => Results.Text("ok"));
 app.MapGet("/readyz", () => connector.Ready ? Results.Text("ok") : Results.StatusCode(503));
 
+// webhook の受け口。設定のある送り元だけ /webhooks/{name} を出す(無ければ経路自体を作らない)
+var sources = new List<IWebhookSource>();
+if (anarlog is not null) sources.Add(new AnarlogWebhook(anarlog));
+if (sources.Count > 0)
+{
+    if (connector is not IChannelPoster poster)
+    {
+        Console.Error.WriteLine($"コネクタ {connector.Name} はチャンネル投稿に対応していないので webhook を受けられません");
+        return 1;
+    }
+    var endpoint = new WebhookEndpoint(sources, poster, log);
+    app.MapPost("/webhooks/{name}", async (string name, HttpRequest request, CancellationToken ct) =>
+    {
+        var body = await ReadBounded(request, WebhookEndpoint.MaxBodyBytes, ct);
+        if (body is null) return Results.StatusCode(413);
+        var reply = await endpoint.HandleAsync(name,
+            new WebhookRequest(h => request.Headers[h].FirstOrDefault(), body.Value), ct);
+        return Results.Text(reply.Text, statusCode: reply.Status);
+    });
+    log.LogInformation("webhook 受信: {Paths}", string.Join(", ", sources.Select(s => "/webhooks/" + s.Name)));
+}
+
 var run = Task.Run(async () =>
 {
     try
@@ -126,3 +151,18 @@ var run = Task.Run(async () =>
 app.Run();
 await run;
 return connector.Ready ? 0 : 1;
+
+/// <summary>本文を上限まで読む。超えたら null(413 にする)。署名検証のため生のまま持つ</summary>
+static async Task<ReadOnlyMemory<byte>?> ReadBounded(HttpRequest request, int max, CancellationToken ct)
+{
+    if (request.ContentLength > max) return null;
+    var ms = new MemoryStream();
+    var buf = new byte[16 * 1024];
+    int n;
+    while ((n = await request.Body.ReadAsync(buf, ct)) > 0)
+    {
+        ms.Write(buf, 0, n);
+        if (ms.Length > max) return null;
+    }
+    return ms.ToArray();
+}

@@ -1,3 +1,4 @@
+using Aizuchi.Core;
 using Aizuchi.Slack;
 using System.Threading.Tasks;
 

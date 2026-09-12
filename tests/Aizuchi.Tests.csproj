@@ -14,5 +14,6 @@
     <ProjectReference Include="../src/Aizuchi.Claude/Aizuchi.Claude.csproj" />
     <ProjectReference Include="../src/Aizuchi.GitHub/Aizuchi.GitHub.csproj" />
     <ProjectReference Include="../src/Aizuchi.OpenProject/Aizuchi.OpenProject.csproj" />
+    <ProjectReference Include="../src/Aizuchi.Anarlog/Aizuchi.Anarlog.csproj" />
   </ItemGroup>
 </Project>

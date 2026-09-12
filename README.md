@@ -1,7 +1,8 @@
 # aizuchi
 
 チャットで相槌を打つ AI ボット。**コネクタ(Slack …)× プロバイダ(Claude …)** を差し替えられる器で、
-.NET 10 Native AOT の単一バイナリ。Socket Mode なので公開 URL も Ingress も要らず、k3s に Helm で置けば動く。
+.NET 10 Native AOT の単一バイナリ。会話ボットとしては Socket Mode なので公開 URL も Ingress も要らず、
+k3s に Helm で置けば動く。外部サービスの webhook を受けるときだけ `/webhooks/` を Ingress に出す。
 
 ```
 @aizuchi に質問 / DM で話しかける / @aizuchi で始めたスレッドで続けて話す
@@ -106,6 +107,39 @@ PAT で済ませるなら `github.auth=token`、Secret のキー `github-token`�
 バーンダウンと同じ数え方。**スプリント単位が正で、週あたりは換算値でしかない**。完了日が API から
 素直に取れないため、日付で切った集計は `updatedAt` 代用になり誤差が出る。
 
+## webhook を受ける(既定で無効)
+
+SaaS の「Slack 連携」は有料枠になっていることが多い。aizuchi はその置き換え先として、外部サービスの
+webhook を受けて Slack のチャンネルに流せる。会話ボットとは独立した機能で、**LLM は通さない**
+(定型の描画だけ。外部が作る本文を LLM に渡すとプロンプトインジェクションの入口になるため)。
+
+- `webhooks.enabled=true` と `webhooks.host` で、Service と `/webhooks/` だけを通す IngressRoute が作られる。
+  `/healthz` `/readyz` は外に出ない
+- 送り元ごとに `IWebhookSource` を 1 つ実装する。**署名を検証してから本文を読む**、通らなければ 401
+- 投稿できたら 200、Slack が落ちていれば 503 を返して**送り元の再送に任せる**。こちらでは溜めない
+- 本文は 4 MB まで。超えたら 413
+
+### Anarlog
+
+[Anarlog](https://github.com/fastrepl/anarlog)(会議メモ AI)の webhook を受けて、**タイトル + AI 要約 + 未完了の
+アクションアイテム**をチャンネルに投稿する。有料の「Share a meeting recap in Slack」と同じ形。
+
+1. 投稿先チャンネルにボットを招待し、チャンネル ID(`C0…`)を控える
+2. values に `webhooks.enabled=true`、`webhooks.host`、`anarlog.enabled=true`、`anarlog.channel` を書いてデプロイ
+3. Anarlog の **Settings → Developers → Webhooks** で `https://<host>/webhooks/anarlog` を追加。
+   表示される `whsec_…` は**一度しか出ない**ので、Secret のキー `anarlog-webhook-secret` に入れて Pod を再起動
+4. Anarlog の **Test** を押す。チャンネルに「テスト配信を受け取りました」が出れば経路は通っている
+
+| Anarlog のイベント | 動き |
+|---|---|
+| `note.enhanced`(AI 要約ができた) | 投稿する。要約が無ければ手書きメモ、それも無ければ何もしない |
+| `meeting.completed`(録音が終わった) | 投稿しない(要約がまだ無い。有料版もここでは動かない) |
+| `webhook.test` | 経路確認のメッセージを投稿する |
+
+検証は `x-anarlog-signature`(`sha256=` + HMAC-SHA256 の hex、鍵は `whsec_…`、対象は生の本文)を定数時間で比べ、
+`x-anarlog-timestamp` が 5 分以上ずれていれば再生とみなして捨てる。Anarlog は失敗時に 5 秒・30 秒後に再送するので、
+本文の `id` で重複を弾く。**配信はデスクトップアプリが開いている間だけ**で、閉じている間の会議は届かない(Anarlog 側の仕様)。
+
 ## Web 検索(既定で無効)
 
 `claude.webSearchMaxUses` を 1 以上にすると、LLM が **Anthropic 側で実行される `web_search`** を使えるようになる。
@@ -125,7 +159,8 @@ src/Aizuchi.Core/     IChatConnector / ILlmProvider / ITool / IConversation / IR
 src/Aizuchi.Slack/    Slack コネクタ: Socket Mode、Web API、反応判定、履歴→messages、Markdown→mrkdwn
 src/Aizuchi.Claude/   Claude プロバイダ: /v1/messages のストリーミング(SSE)とツール呼び出しの往復
 src/Aizuchi.GitHub/   GitHub の道具パック: App(JWT → installation token)/ PAT 認証、REST の薄い皮、道具 6 つ
-src/Aizuchi.OpenProject/ OpenProject の道具パック: API キーで Basic 認証、API v3 の薄い皮、道具 4 つ
+src/Aizuchi.OpenProject/ OpenProject の道具パック: API キーで Basic 認証、API v3 の薄い皮、道具 6 つ
+src/Aizuchi.Anarlog/  Anarlog の webhook 受信: HMAC 検証、再送の重複排除、要約の描画
 src/Aizuchi/          ホスト。環境変数でコネクタとプロバイダを選び、/healthz /readyz を出す
 tests/                純粋関数・JSON 形状・Bot の流れ(偽コネクタ / 偽プロバイダ)のテスト。TUnit(Microsoft.Testing.Platform)
 connectors/slack/     Slack アプリのマニフェストと手順
@@ -214,6 +249,7 @@ k3s の helm-controller なら `HelmChart` CR で同じことができる(`value
 | `BOT_SYSTEM_PROMPT` `BOT_MAX_HISTORY` `BOT_UPDATE_INTERVAL_MS` `BOT_MEMORY_DIR` `BOT_MEMORY_MAX_CHARS` `BOT_CHANNEL_CONTEXT` | 共通 |
 | `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`(PEM)、または `GITHUB_TOKEN` + `GITHUB_OWNERS` | GitHub の道具(任意) |
 | `OPENPROJECT_URL` + `OPENPROJECT_API_KEY` | OpenProject の道具(任意。両方必須) |
+| `ANARLOG_WEBHOOK_SECRET` + `ANARLOG_SLACK_CHANNEL` | Anarlog の webhook 受信(任意。両方必須) |
 
 ## ヘルスチェック
 

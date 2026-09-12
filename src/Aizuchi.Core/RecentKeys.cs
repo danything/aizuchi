@@ -1,8 +1,8 @@
-namespace Aizuchi.Slack;
+namespace Aizuchi.Core;
 
 /// <summary>
-/// 直近 N 件のキーを覚える重複判定。app_mention と message の二重配信や
-/// Slack の再送で同じメッセージに 2 回答えないために使う。
+/// 直近 N 件のキーを覚える重複判定。Slack の二重配信・再送や、webhook の再送で
+/// 同じものを 2 回処理しないために使う。
 /// </summary>
 public sealed class RecentKeys(int capacity)
 {

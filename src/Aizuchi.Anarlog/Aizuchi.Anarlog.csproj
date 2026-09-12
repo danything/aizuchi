@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Anarlog(会議メモ)の webhook を受けて、要約を Slack に流す。有料の Slack 連携の置き換え -->
+  <ItemGroup>
+    <ProjectReference Include="../Aizuchi.Core/Aizuchi.Core.csproj" />
+  </ItemGroup>
+</Project>
