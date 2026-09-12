@@ -10,3 +10,5 @@ appVersion: dev
 home: https://github.com/danything/aizuchi
 sources:
   - https://github.com/danything/aizuchi
+annotations:
+  artifacthub.io/license: AGPL-3.0-or-later
