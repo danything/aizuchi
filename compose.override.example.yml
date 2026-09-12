@@ -26,9 +26,10 @@ services:
       # --- openproject (任意。セルフホストの URL と API キー) ---
       #OPENPROJECT_URL: https://openproject.example.com
       #OPENPROJECT_API_KEY: ...
-      # --- anarlog (任意。webhook の署名鍵 whsec_… と投稿先チャンネル ID) ---
-      #ANARLOG_WEBHOOK_SECRET: whsec_...
+      # --- anarlog (任意。投稿先チャンネル ID。署名鍵は Slack の DM から登録する) ---
       #ANARLOG_SLACK_CHANNEL: C0XXXXXXX
+      #ANARLOG_STORE_DIR: /data/anarlog
+      #ANARLOG_PUBLIC_URL: https://hook.example.com/webhooks/anarlog
       # --- bot 共通 ---
       #BOT_SYSTEM_PROMPT: 常に関西弁で。
       #BOT_MAX_HISTORY: "50"

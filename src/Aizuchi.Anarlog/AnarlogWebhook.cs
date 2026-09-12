@@ -6,19 +6,20 @@ using Aizuchi.Core;
 
 namespace Aizuchi.Anarlog;
 
-/// <param name="Secret">Anarlog が端点を作ったときに一度だけ表示する whsec_… の署名鍵</param>
 /// <param name="Channel">投稿先の Slack チャンネル ID。ボットを招待しておくこと</param>
-public sealed record AnarlogOptions(string Secret, string Channel)
+/// <param name="StoreDir">署名鍵の置き場。デスクトップアプリごとに 1 本ずつ登録される</param>
+/// <param name="PublicUrl">Anarlog に登録してもらう URL。案内文に使うだけ</param>
+public sealed record AnarlogOptions(string Channel, string StoreDir, string? PublicUrl)
 {
-    /// <summary>鍵とチャンネルが揃っていれば有効。どちらも無ければ null(Anarlog 無効)</summary>
+    /// <summary>ANARLOG_SLACK_CHANNEL があれば有効。鍵は Slack から登録するので環境変数には持たない</summary>
     public static AnarlogOptions? FromEnvironment(Func<string, string?> env)
     {
-        var secret = Env.Optional(env, "ANARLOG_WEBHOOK_SECRET");
         var channel = Env.Optional(env, "ANARLOG_SLACK_CHANNEL");
-        if (secret is null && channel is null) return null;
-        if (secret is null || channel is null)
-            throw new ConfigException("Anarlog には ANARLOG_WEBHOOK_SECRET と ANARLOG_SLACK_CHANNEL の両方が要ります");
-        return new AnarlogOptions(secret, channel);
+        if (channel is null) return null;
+        return new AnarlogOptions(
+            channel,
+            Env.Or(env, "ANARLOG_STORE_DIR", "data/anarlog"),
+            Env.Optional(env, "ANARLOG_PUBLIC_URL"));
     }
 }
 
@@ -26,7 +27,7 @@ public sealed record AnarlogOptions(string Secret, string Channel)
 /// Anarlog の webhook(docs/reference/webhooks.mdx)。署名を確かめ、note.enhanced が来たら
 /// 有料の Slack 連携と同じ形(タイトル + AI 要約)でチャンネルに流す。
 /// </summary>
-public sealed class AnarlogWebhook(AnarlogOptions opt, TimeProvider? clock = null) : IWebhookSource
+public sealed class AnarlogWebhook(AnarlogStore store, AnarlogOptions opt, TimeProvider? clock = null) : IWebhookSource
 {
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     /// <summary>再送(5 秒・30 秒後)で同じ配信を二度投稿しないための記憶</summary>
@@ -41,9 +42,14 @@ public sealed class AnarlogWebhook(AnarlogOptions opt, TimeProvider? clock = nul
 
     private WebhookOutcome Handle(WebhookRequest req)
     {
-        // 1. 署名。本文を解釈する前に、生のバイト列に対して確かめる
-        if (!Signature.Verify(opt.Secret, req.Body.Span, req.Header("x-anarlog-signature")))
-            return new WebhookOutcome.Reject(401, "署名が一致しません");
+        // 1. 署名。本文を解釈する前に、生のバイト列に対して確かめる。
+        //    鍵はデスクトップアプリごとに違うので、登録されている鍵を順に試す(数本なので十分速い)
+        var signature = req.Header("x-anarlog-signature");
+        var registrations = store.All();
+        if (registrations.Count == 0)
+            return new WebhookOutcome.Reject(401, "登録された署名鍵がありません(DM で anarlog add を)");
+        if (!registrations.Any(r => Signature.Verify(r.Secret, req.Body.Span, signature)))
+            return new WebhookOutcome.Reject(401, "署名がどの登録とも一致しません");
         // 2. 再生対策。署名が正しくても古い配信は捨てる
         if (!Fresh(req.Header("x-anarlog-timestamp")))
             return new WebhookOutcome.Reject(401, "タイムスタンプが古いか未来です");

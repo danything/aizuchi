@@ -84,11 +84,15 @@ public interface IMessageHandler
 /// <param name="ConversationId">ログ用の会話キー(例: C123:1700000000.000100)</param>
 /// <param name="Scope">チャンネル単位の記憶を分けるキー(例: Slack のチャンネル ID)</param>
 /// <param name="Text">発火元の本文。メンション除去・エンティティ復元済み</param>
+/// <param name="UserId">発言者。手動コマンドで「誰の登録か」を決めるのに使う</param>
+/// <param name="IsDirect">DM か。鍵の登録は DM でしか受け付けない</param>
 public sealed record IncomingMessage(
     string ConversationId,
     string Scope,
     string Text,
-    IConversation Conversation);
+    IConversation Conversation,
+    string? UserId = null,
+    bool IsDirect = false);
 
 /// <summary>返信先の会話。履歴の取り出しと返信の出し方はコネクタが知っている</summary>
 public interface IConversation
@@ -142,4 +146,14 @@ public abstract record WebhookOutcome
 public interface IChannelPoster
 {
     Task PostAsync(string channel, string markdown, CancellationToken ct);
+}
+
+/// <summary>
+/// LLM を通さない手動コマンド(memory と同類)。署名鍵のように LLM の文脈に入れたくないものはここで扱う。
+/// 履歴の取得より前に呼ばれるので、扱った発言は LLM に一切渡らない。
+/// </summary>
+public interface IChatCommand
+{
+    /// <returns>この発言を扱ったなら返信文(Markdown)。扱わないなら null</returns>
+    Task<string?> TryHandleAsync(IncomingMessage message, CancellationToken ct);
 }

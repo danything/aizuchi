@@ -11,6 +11,18 @@ public class AnarlogTests
 
     private const string Secret = "whsec_test";
     private static readonly DateTimeOffset Now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+    private static readonly AnarlogOptions Opt = new("C1", "unused", "https://azc.example.com/webhooks/anarlog");
+
+    private static AnarlogStore TempStore() =>
+        new(Path.Combine(Path.GetTempPath(), "aizuchi-tests", Guid.NewGuid().ToString("N")));
+
+    /// <summary>鍵を 1 本登録した状態の受け口</summary>
+    private static AnarlogWebhook Hook(AnarlogStore? store = null)
+    {
+        store ??= TempStore();
+        if (store.All().Count == 0) store.Add(Secret, "U1");
+        return new AnarlogWebhook(store, Opt, new FixedClock(Now));
+    }
 
     private static WebhookRequest Signed(string body, string? signature = null, long? timestamp = null)
     {
@@ -24,8 +36,7 @@ public class AnarlogTests
     }
 
     private static Task<WebhookOutcome> Run(WebhookRequest req, AnarlogWebhook? hook = null) =>
-        (hook ?? new AnarlogWebhook(new AnarlogOptions(Secret, "C1"), new FixedClock(Now)))
-            .HandleAsync(req, TestContext.Current!.Execution.CancellationToken);
+        (hook ?? Hook()).HandleAsync(req, TestContext.Current!.Execution.CancellationToken);
 
     private const string Enhanced = """
         {"id":"evt_1","event":"note.enhanced","created_at":"2026-07-28T09:00:00.000Z","data":{
@@ -97,7 +108,7 @@ public class AnarlogTests
     [Test]
     public async Task 再送は一度しか投稿しない()
     {
-        var hook = new AnarlogWebhook(new AnarlogOptions(Secret, "C1"), new FixedClock(Now));
+        var hook = Hook();
         await Assert.That(await Run(Signed(Enhanced), hook)).IsTypeOf<WebhookOutcome.Post>();
         var again = await Run(Signed(Enhanced), hook);
         await Assert.That(again).IsTypeOf<WebhookOutcome.Ignore>();
@@ -127,13 +138,95 @@ public class AnarlogTests
     }
 
     [Test]
-    public async Task 設定は鍵とチャンネルの両方が要る()
+    public async Task 設定はチャンネルだけで有効になり_鍵は環境変数に持たない()
     {
         static Func<string, string?> Env(params (string, string)[] pairs) => name => pairs.FirstOrDefault(p => p.Item1 == name).Item2;
         await Assert.That(AnarlogOptions.FromEnvironment(Env())).IsNull();
-        await Assert.That(() => AnarlogOptions.FromEnvironment(Env(("ANARLOG_WEBHOOK_SECRET", "whsec_x")))).Throws<ConfigException>();
-        await Assert.That(() => AnarlogOptions.FromEnvironment(Env(("ANARLOG_SLACK_CHANNEL", "C1")))).Throws<ConfigException>();
-        var o = AnarlogOptions.FromEnvironment(Env(("ANARLOG_WEBHOOK_SECRET", "whsec_x"), ("ANARLOG_SLACK_CHANNEL", "C1")))!;
+        var o = AnarlogOptions.FromEnvironment(Env(("ANARLOG_SLACK_CHANNEL", "C1")))!;
         await Assert.That(o.Channel).IsEqualTo("C1");
+        await Assert.That(o.StoreDir).IsEqualTo("data/anarlog");
+        await Assert.That(o.PublicUrl).IsNull();
+    }
+
+    [Test]
+    public async Task 登録が無ければ401_複数の鍵はどれかが合えば通る()
+    {
+        var empty = new AnarlogWebhook(TempStore(), Opt, new FixedClock(Now));
+        var r = (WebhookOutcome.Reject)await Run(Signed(Enhanced), empty);
+        await Assert.That(r.Status).IsEqualTo(401);
+        await Assert.That(r.Reason).Contains("登録された署名鍵がありません");
+
+        // 別デバイスの鍵で署名された配信も、その鍵が登録されていれば通る
+        var store = TempStore();
+        store.Add("whsec_deviceA", "U1");
+        store.Add("whsec_deviceB", "U2");
+        var hook = new AnarlogWebhook(store, Opt, new FixedClock(Now));
+        var body = Encoding.UTF8.GetBytes(Enhanced);
+        var byB = new WebhookRequest(Signed(Enhanced, signature: Signature.Compute("whsec_deviceB", body)).Header, body);
+        await Assert.That(await Run(byB, hook)).IsTypeOf<WebhookOutcome.Post>();
+    }
+
+    [Test]
+    public async Task 鍵の置き場は再起動しても残り_自分の登録しか消せない()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "aizuchi-tests", Guid.NewGuid().ToString("N"));
+        var a = new AnarlogStore(dir);
+        var reg = a.Add("whsec_persist00", "U1");
+        await Assert.That(reg.Id).HasLength().EqualTo(6);
+
+        var b = new AnarlogStore(dir);                      // 別インスタンス = 再起動後
+        await Assert.That(b.All()).Count().IsEqualTo(1);
+        await Assert.That(b.All()[0].Secret).IsEqualTo("whsec_persist00");
+        await Assert.That(b.Remove(reg.Id, "U2")).IsFalse();   // 他人は消せない
+        await Assert.That(b.Remove(reg.Id, "U1")).IsTrue();
+        await Assert.That(new AnarlogStore(dir).All()).Count().IsEqualTo(0);
+    }
+
+    // ---- Slack の手動コマンド ----
+
+    private static Task<string?> Cmd(AnarlogCommand cmd, string text, string? user = "U1", bool dm = true) =>
+        cmd.TryHandleAsync(new IncomingMessage("c", "C1", text, null!, user, dm), TestContext.Current!.Execution.CancellationToken);
+
+    [Test]
+    public async Task 鍵の登録はDMでしか受け付けず_登録すると受け口が通るようになる()
+    {
+        var store = TempStore();
+        var cmd = new AnarlogCommand(store, Opt);
+
+        await Assert.That(await Cmd(cmd, "こんにちは")).IsNull();                       // 関係ない発言は素通し
+        var inChannel = await Cmd(cmd, "anarlog add whsec_0123456789abcdef", dm: false);
+        await Assert.That(inChannel).Contains("DM で");
+        await Assert.That(store.All()).Count().IsEqualTo(0);                          // チャンネルでは保存しない
+
+        await Assert.That(await Cmd(cmd, "anarlog add whsec_")).Contains("形が違います");
+        var ok = await Cmd(cmd, "anarlog add whsec_0123456789abcdef");
+        await Assert.That(ok).Contains("登録しました");
+        await Assert.That(ok).Contains("<#C1>");
+        await Assert.That(ok).DoesNotContain("0123456789abcdef");                    // 鍵は返信に出さない
+        await Assert.That(store.All()[0].SlackUser).IsEqualTo("U1");
+
+        // その鍵で署名された配信が通る
+        var body = Encoding.UTF8.GetBytes(Enhanced);
+        var req = new WebhookRequest(Signed(Enhanced, signature: Signature.Compute("whsec_0123456789abcdef", body)).Header, body);
+        await Assert.That(await Run(req, new AnarlogWebhook(store, Opt, new FixedClock(Now)))).IsTypeOf<WebhookOutcome.Post>();
+    }
+
+    [Test]
+    public async Task 一覧と削除は自分の分だけ_案内にはURLが入る()
+    {
+        var store = TempStore();
+        var mine = store.Add("whsec_aaaaaaaaaa", "U1");
+        store.Add("whsec_bbbbbbbbbb", "U2");
+        var cmd = new AnarlogCommand(store, Opt);
+
+        var list = (await Cmd(cmd, "anarlog"))!;
+        await Assert.That(list).Contains("1 件");
+        await Assert.That(list).Contains(mine.Id);
+        await Assert.That(list).Contains("https://azc.example.com/webhooks/anarlog");
+        await Assert.That(list).DoesNotContain("whsec_aaaaaaaaaa");
+
+        await Assert.That(await Cmd(cmd, $"anarlog remove {mine.Id}", user: "U2")).Contains("ありません");
+        await Assert.That(await Cmd(cmd, $"anarlog remove {mine.Id}")).Contains("消しました");
+        await Assert.That(store.All()).Count().IsEqualTo(1);
     }
 }

@@ -108,13 +108,28 @@ if (openProject is not null)
     }
 }
 
-var bot = new Bot(provider, options, memory, packs, log);
+// Anarlog: 署名鍵はデスクトップアプリごとに違い、Slack の DM から登録する。記憶と同じ PVC に置く
+var commands = new List<IChatCommand>();
+var sources = new List<IWebhookSource>();
+if (anarlog is not null)
+{
+    try { Directory.CreateDirectory(anarlog.StoreDir); }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"Anarlog の鍵の置き場 {anarlog.StoreDir} を作れません({ex.Message})");
+        return 1;
+    }
+    var store = new AnarlogStore(anarlog.StoreDir);
+    commands.Add(new AnarlogCommand(store, anarlog));
+    sources.Add(new AnarlogWebhook(store, anarlog));
+    log.LogInformation("Anarlog: 登録 {Count} 件、投稿先 {Channel}", store.All().Count, anarlog.Channel);
+}
+
+var bot = new Bot(provider, options, memory, packs, log, commands);
 app.MapGet("/healthz", () => Results.Text("ok"));
 app.MapGet("/readyz", () => connector.Ready ? Results.Text("ok") : Results.StatusCode(503));
 
 // webhook の受け口。設定のある送り元だけ /webhooks/{name} を出す(無ければ経路自体を作らない)
-var sources = new List<IWebhookSource>();
-if (anarlog is not null) sources.Add(new AnarlogWebhook(anarlog));
 if (sources.Count > 0)
 {
     if (connector is not IChannelPoster poster)

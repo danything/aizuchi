@@ -85,6 +85,33 @@ public class BotTests
     }
 
     [Test]
+    public async Task 履歴に貼られた鍵はLLMに渡す前に伏せる()
+    {
+        var provider = new FakeProvider(["ok"]);
+        var conv = new FakeConversation([new("user", "anarlog add whsec_0123456789abcdef お願い"), new("user", "hi")]);
+        await new Bot(provider, Options, null, [], NullLogger.Instance).HandleAsync(new IncomingMessage("c", "C1", "hi", conv), TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(provider.LastRequest!.Messages[0].Content).DoesNotContain("0123456789abcdef");
+        await Assert.That(provider.LastRequest.Messages[0].Content).Contains("whsec_…(伏せ)");
+    }
+
+    private sealed class EchoCommand : IChatCommand
+    {
+        public Task<string?> TryHandleAsync(IncomingMessage m, CancellationToken ct) =>
+            Task.FromResult(m.Text.StartsWith("echo ") ? m.Text[5..] : null);
+    }
+
+    [Test]
+    public async Task 手動コマンドはLLMを通らずに返す()
+    {
+        var provider = new FakeProvider(["LLM が答えた"]);
+        var conv = new FakeConversation(History);
+        var bot = new Bot(provider, Options, null, [], NullLogger.Instance, [new EchoCommand()]);
+        await bot.HandleAsync(new IncomingMessage("c", "C1", "echo そのまま", conv), TestContext.Current!.Execution.CancellationToken);
+        await Assert.That(conv.Final).IsEqualTo("そのまま");
+        await Assert.That(provider.LastRequest).IsNull();     // LLM は呼ばれていない
+    }
+
+    [Test]
     public async Task 失敗したら下書きにエラーを書く()
     {
         var conv = new FakeConversation(History);

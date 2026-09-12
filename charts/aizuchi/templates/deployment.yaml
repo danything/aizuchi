@@ -90,13 +90,13 @@ spec:
                   key: openproject-api-key
             {{- end }}
             {{- if .Values.anarlog.enabled }}
-            - name: ANARLOG_WEBHOOK_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.existingSecret }}
-                  key: anarlog-webhook-secret
+            {{- if not .Values.persistence.enabled }}{{ fail "anarlog は署名鍵を保存するので persistence.enabled が必要です" }}{{ end }}
             - name: ANARLOG_SLACK_CHANNEL
               value: {{ required "anarlog.channel が必要です" .Values.anarlog.channel | quote }}
+            - name: ANARLOG_STORE_DIR
+              value: "/data/anarlog"
+            - name: ANARLOG_PUBLIC_URL
+              value: {{ printf "https://%s/webhooks/anarlog" (required "anarlog には webhooks.host が必要です" .Values.webhooks.host) | quote }}
             {{- end }}
             {{- with .Values.bot.systemPrompt }}
             - name: BOT_SYSTEM_PROMPT

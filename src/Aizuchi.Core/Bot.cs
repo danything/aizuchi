@@ -6,7 +6,8 @@ namespace Aizuchi.Core;
 /// 1 メッセージ = 1 返信の流れ。履歴取得 → 仮投稿 → ストリームを間引いて書き足す → 確定。
 /// どのチャットでも、どの LLM でもここは同じ。記憶(memory)の差し込みと手動コマンドもここ。
 /// </summary>
-public sealed class Bot(ILlmProvider llm, BotOptions options, IMemoryStore? memory, IReadOnlyList<IToolPack> packs, ILogger log) : IMessageHandler
+public sealed class Bot(ILlmProvider llm, BotOptions options, IMemoryStore? memory, IReadOnlyList<IToolPack> packs, ILogger log,
+    IReadOnlyList<IChatCommand>? commands = null) : IMessageHandler
 {
     public async Task HandleAsync(IncomingMessage message, CancellationToken ct)
     {
@@ -15,9 +16,19 @@ public sealed class Bot(ILlmProvider llm, BotOptions options, IMemoryStore? memo
             await HandleMemoryCommand(message, command, ct);
             return;
         }
+        // 手動コマンドは履歴を取る前に片付ける。扱った発言は LLM に渡らない
+        foreach (var c in commands ?? [])
+        {
+            if (await c.TryHandleAsync(message, ct) is not { } reply) continue;
+            var handled = await message.Conversation.BeginReplyAsync(ct);
+            await handled.FinishAsync(reply, ct);
+            return;
+        }
 
         var history = await message.Conversation.HistoryAsync(options.MaxHistory, ct);
         if (history.Count == 0) return;
+        // 会話に貼られた鍵は LLM に見せない(DM で登録した whsec_ が履歴に残っているため)
+        history = history.Select(m => m with { Content = Secrets.Redact(m.Content) }).ToList();
 
         var system = options.SystemPrompt;
         var tools = new List<ITool>();

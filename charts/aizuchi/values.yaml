@@ -82,12 +82,13 @@ webhooks:
   # 受け口のホスト名。URL は https://<host>/webhooks/<source>
   host: ""
 
-# Anarlog(会議メモ)の AI 要約を Slack に流す。有料の Slack 連携の置き換え。webhooks.enabled も要る
+# Anarlog(会議メモ)の AI 要約を Slack に流す。有料の Slack 連携の置き換え。
+# webhooks.enabled と persistence.enabled が要る(署名鍵をデスクトップアプリごとに保存するため)
 anarlog:
   enabled: false
   # 投稿先チャンネル ID(C0…)。ボットをそのチャンネルに招待しておく
   channel: ""
-  # 署名鍵は existingSecret のキー anarlog-webhook-secret(Anarlog が端点作成時に一度だけ表示する whsec_…)
+  # 署名鍵は Secret ではなく、各自が aizuchi への DM で「anarlog add whsec_…」と送って登録する
 
 # そのまま container.env に足す
 extraEnv: []

@@ -52,7 +52,7 @@ public sealed class SlackConnector(SlackApi api, SlackOptions options, int chann
 
         var conversation = new SlackConversation(api, channel, threadTs, isDm, history, ev, _botUserId, _botId, channelContext);
         var text = SlackText.StripMention(ev.Text, _botUserId);
-        await handler.HandleAsync(new IncomingMessage($"{channel}:{threadTs ?? ev.Ts}", channel, text, conversation), ct);
+        await handler.HandleAsync(new IncomingMessage($"{channel}:{threadTs ?? ev.Ts}", channel, text, conversation, ev.User, isDm), ct);
     }
 
     /// <summary>webhook 通知などをチャンネルに出す。長ければ続きを最初の投稿のスレッドに入れる</summary>

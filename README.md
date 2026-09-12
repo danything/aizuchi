@@ -124,11 +124,23 @@ webhook を受けて Slack のチャンネルに流せる。会話ボットと�
 [Anarlog](https://github.com/fastrepl/anarlog)(会議メモ AI)の webhook を受けて、**タイトル + AI 要約 + 未完了の
 アクションアイテム**をチャンネルに投稿する。有料の「Share a meeting recap in Slack」と同じ形。
 
+Anarlog の webhook は**デスクトップアプリごとの設定**で、端点を作るたびに別の `whsec_…` が出る。
+そのため鍵は Secret に固定せず、各自が Slack から登録する。
+
+管理者(一度だけ):
 1. 投稿先チャンネルにボットを招待し、チャンネル ID(`C0…`)を控える
 2. values に `webhooks.enabled=true`、`webhooks.host`、`anarlog.enabled=true`、`anarlog.channel` を書いてデプロイ
-3. Anarlog の **Settings → Developers → Webhooks** で `https://<host>/webhooks/anarlog` を追加。
-   表示される `whsec_…` は**一度しか出ない**ので、Secret のキー `anarlog-webhook-secret` に入れて Pod を再起動
-4. Anarlog の **Test** を押す。チャンネルに「テスト配信を受け取りました」が出れば経路は通っている
+   (`persistence.enabled` も要る。鍵は記憶と同じ PVC の `/data/anarlog` に置く)
+
+使う人(デスクトップアプリごと):
+1. Anarlog の **Settings → Developers → Webhooks** で `https://<host>/webhooks/anarlog` を追加
+2. 表示された `whsec_…` を、**aizuchi への DM で** `anarlog add whsec_…` と送る(一度しか表示されない)。
+   チャンネルに貼っても受け付けない
+3. Anarlog の **Test** を押す。チャンネルに「テスト配信を受け取りました」が出れば完成
+
+`anarlog list` で自分の登録、`anarlog remove <ID>` で削除。これらは `memory` と同じ手動コマンドで、
+**LLM を通らない**。DM に残った鍵は次の会話で履歴として読み込まれうるので、LLM に渡す前に
+`whsec_…` の形を伏せ字にしている(`Secrets.Redact`)。それでも登録後は DM のメッセージを消しておくのが安全。
 
 | Anarlog のイベント | 動き |
 |---|---|
@@ -136,7 +148,7 @@ webhook を受けて Slack のチャンネルに流せる。会話ボットと�
 | `meeting.completed`(録音が終わった) | 投稿しない(要約がまだ無い。有料版もここでは動かない) |
 | `webhook.test` | 経路確認のメッセージを投稿する |
 
-検証は `x-anarlog-signature`(`sha256=` + HMAC-SHA256 の hex、鍵は `whsec_…`、対象は生の本文)を定数時間で比べ、
+検証は `x-anarlog-signature`(`sha256=` + HMAC-SHA256 の hex、鍵は `whsec_…`、対象は生の本文)を登録された鍵で順に定数時間で比べ、
 `x-anarlog-timestamp` が 5 分以上ずれていれば再生とみなして捨てる。Anarlog は失敗時に 5 秒・30 秒後に再送するので、
 本文の `id` で重複を弾く。**配信はデスクトップアプリが開いている間だけ**で、閉じている間の会議は届かない(Anarlog 側の仕様)。
 
@@ -249,7 +261,7 @@ k3s の helm-controller なら `HelmChart` CR で同じことができる(`value
 | `BOT_SYSTEM_PROMPT` `BOT_MAX_HISTORY` `BOT_UPDATE_INTERVAL_MS` `BOT_MEMORY_DIR` `BOT_MEMORY_MAX_CHARS` `BOT_CHANNEL_CONTEXT` | 共通 |
 | `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`(PEM)、または `GITHUB_TOKEN` + `GITHUB_OWNERS` | GitHub の道具(任意) |
 | `OPENPROJECT_URL` + `OPENPROJECT_API_KEY` | OpenProject の道具(任意。両方必須) |
-| `ANARLOG_WEBHOOK_SECRET` + `ANARLOG_SLACK_CHANNEL` | Anarlog の webhook 受信(任意。両方必須) |
+| `ANARLOG_SLACK_CHANNEL`(必須)`ANARLOG_STORE_DIR` `ANARLOG_PUBLIC_URL` | Anarlog の webhook 受信(任意) |
 
 ## ヘルスチェック
 

@@ -5,6 +5,7 @@ namespace Aizuchi.Anarlog;
 // Anarlog の webhook 本文。snake_case。要る項目だけ受ける(知らない項目は無視される)
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
 [JsonSerializable(typeof(Envelope))]
+[JsonSerializable(typeof(List<Registration>))]
 public sealed partial class AnarlogJson : JsonSerializerContext;
 
 /// <summary>{ id: "evt_…", event, created_at, data }</summary>
