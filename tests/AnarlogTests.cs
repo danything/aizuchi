@@ -95,6 +95,52 @@ public class AnarlogTests
     }
 
     [Test]
+    public async Task 要約が会議名の見出しで始まってもタイトルは一度だけ()
+    {
+        // Anarlog の AI 要約は「# 会議名」で始まることがある。そのまま足すとタイトルが二度出る
+        var headed = Enhanced.Replace("""{"title":"Summary","markdown":"## 決まったこと\n- FAX を廃止"}""",
+                                      """{"title":"Summary","markdown":"# 週次定例\n\n## 決まったこと\n- FAX を廃止"}""");
+        var p = (WebhookOutcome.Post)await Run(Signed(headed));
+        await Assert.That(p.Markdown).StartsWith("**週次定例**\n\n## 決まったこと\n- FAX を廃止");
+
+        // 太字で書かれていても、見出しの飾りや空白の違いも同じタイトルとみなす
+        var bold = Enhanced.Replace("""markdown":"## 決まったこと""", """markdown":"**週 次 定例**\n\n## 決まったこと""")
+                           .Replace("evt_1", "evt_b");
+        await Assert.That(((WebhookOutcome.Post)await Run(Signed(bold))).Markdown)
+            .StartsWith("**週次定例**\n\n## 決まったこと");
+
+        // 「会議名 ⏎ ====」形式でも下線ごと落とす
+        var setext = Enhanced.Replace("""markdown":"## 決まったこと""", """markdown":"週次定例\n====\n\n## 決まったこと""")
+                             .Replace("evt_1", "evt_s");
+        await Assert.That(((WebhookOutcome.Post)await Run(Signed(setext))).Markdown)
+            .StartsWith("**週次定例**\n\n## 決まったこと");
+
+        // CRLF で書かれていても空行が増えない
+        var crlf = Enhanced.Replace("""markdown":"## 決まったこと""", """markdown":"# 週次定例\r\n\r\n## 決まったこと""")
+                           .Replace("evt_1", "evt_c");
+        await Assert.That(((WebhookOutcome.Post)await Run(Signed(crlf))).Markdown)
+            .StartsWith("**週次定例**\n\n## 決まったこと");
+
+        // 違う見出しで始まる要約はそのまま残す
+        var other = Enhanced.Replace("## 決まったこと", "# 別の見出し").Replace("evt_1", "evt_o");
+        await Assert.That(((WebhookOutcome.Post)await Run(Signed(other))).Markdown)
+            .StartsWith("**週次定例**\n\n# 別の見出し");
+    }
+
+    [Test]
+    public async Task 会議名しか無い要約は中身が無いものとして扱う()
+    {
+        // 見出しを落とすと何も残らない要約は、手書きメモに落ちる
+        var titleOnly = Enhanced.Replace("""markdown":"## 決まったこと\n- FAX を廃止""", """markdown":"# 週次定例""");
+        await Assert.That(((WebhookOutcome.Post)await Run(Signed(titleOnly))).Markdown)
+            .StartsWith("**週次定例**\n\n手書きメモ");
+
+        // メモも無ければ投稿しない
+        var nothing = titleOnly.Replace("""{"title":"","markdown":"手書きメモ"}""", "null").Replace("evt_1", "evt_n");
+        await Assert.That(await Run(Signed(nothing))).IsTypeOf<WebhookOutcome.Ignore>();
+    }
+
+    [Test]
     public async Task 要約が無ければメモ_それも無ければ投稿しない()
     {
         var noteOnly = Enhanced.Replace("""[{"title":"Summary","markdown":"## 決まったこと\n- FAX を廃止"}]""", "[]");
