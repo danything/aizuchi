@@ -117,7 +117,9 @@ public static class Recap
 
         var title = string.IsNullOrWhiteSpace(m.Title) ? "Untitled meeting" : m.Title.Trim();
         var sb = new StringBuilder();
-        sb.Append("**").Append(title).Append("**\n\n").Append(body.Trim());
+        sb.Append("**").Append(title).Append("**");
+        var text = StripLeadingTitle(body.Trim(), title);
+        if (text.Length > 0) sb.Append("\n\n").Append(text);
 
         var todo = (m.ActionItems ?? [])
             .Where(a => a.CompletedAt is null && !string.IsNullOrWhiteSpace(a.Text))
@@ -132,6 +134,27 @@ public static class Recap
         sb.Append("\n\n_Anarlog の会議メモ").Append(date is null ? "" : " · " + date).Append('_');
         return sb.ToString();
     }
+
+    /// <summary>
+    /// 要約の先頭が会議名の見出しなら落とす。タイトルは必ずこちらで付けるので、
+    /// 「# 案件進捗定例会議」で始まる要約をそのまま足すとタイトルが二度出てしまう。
+    /// </summary>
+    private static string StripLeadingTitle(string body, string title)
+    {
+        var br = body.IndexOf('\n');
+        var first = br < 0 ? body : body[..br];
+        if (!SameText(Unmark(first), title)) return body;
+        return br < 0 ? "" : body[(br + 1)..].TrimStart('\n');
+    }
+
+    /// <summary>見出しの # と太字・斜体の * _ を外す。「## *会議名*」も会議名になる</summary>
+    private static string Unmark(string line) => line.Trim().Trim('#').Trim().Trim('*', '_').Trim();
+
+    /// <summary>空白の入れ方や大文字小文字の違いは同じ見出しとみなす</summary>
+    private static bool SameText(string a, string b) =>
+        string.Equals(Squash(a), Squash(b), StringComparison.OrdinalIgnoreCase);
+
+    private static string Squash(string s) => string.Concat(s.Where(c => !char.IsWhiteSpace(c)));
 
     /// <summary>ISO 8601 の先頭 10 文字。有料版も日付はこの切り方</summary>
     private static string? Date(string? iso) => iso is { Length: >= 10 } ? iso[..10] : null;
