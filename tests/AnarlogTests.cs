@@ -109,10 +109,35 @@ public class AnarlogTests
         await Assert.That(((WebhookOutcome.Post)await Run(Signed(bold))).Markdown)
             .StartsWith("**週次定例**\n\n## 決まったこと");
 
+        // 「会議名 ⏎ ====」形式でも下線ごと落とす
+        var setext = Enhanced.Replace("""markdown":"## 決まったこと""", """markdown":"週次定例\n====\n\n## 決まったこと""")
+                             .Replace("evt_1", "evt_s");
+        await Assert.That(((WebhookOutcome.Post)await Run(Signed(setext))).Markdown)
+            .StartsWith("**週次定例**\n\n## 決まったこと");
+
+        // CRLF で書かれていても空行が増えない
+        var crlf = Enhanced.Replace("""markdown":"## 決まったこと""", """markdown":"# 週次定例\r\n\r\n## 決まったこと""")
+                           .Replace("evt_1", "evt_c");
+        await Assert.That(((WebhookOutcome.Post)await Run(Signed(crlf))).Markdown)
+            .StartsWith("**週次定例**\n\n## 決まったこと");
+
         // 違う見出しで始まる要約はそのまま残す
         var other = Enhanced.Replace("## 決まったこと", "# 別の見出し").Replace("evt_1", "evt_o");
         await Assert.That(((WebhookOutcome.Post)await Run(Signed(other))).Markdown)
             .StartsWith("**週次定例**\n\n# 別の見出し");
+    }
+
+    [Test]
+    public async Task 会議名しか無い要約は中身が無いものとして扱う()
+    {
+        // 見出しを落とすと何も残らない要約は、手書きメモに落ちる
+        var titleOnly = Enhanced.Replace("""markdown":"## 決まったこと\n- FAX を廃止""", """markdown":"# 週次定例""");
+        await Assert.That(((WebhookOutcome.Post)await Run(Signed(titleOnly))).Markdown)
+            .StartsWith("**週次定例**\n\n手書きメモ");
+
+        // メモも無ければ投稿しない
+        var nothing = titleOnly.Replace("""{"title":"","markdown":"手書きメモ"}""", "null").Replace("evt_1", "evt_n");
+        await Assert.That(await Run(Signed(nothing))).IsTypeOf<WebhookOutcome.Ignore>();
     }
 
     [Test]

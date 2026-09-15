@@ -111,15 +111,16 @@ public static class Recap
     {
         var m = env.Data?.Meeting;
         if (m is null) return null;
-        var body = m.Summaries?.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.Markdown))?.Markdown
-                   ?? m.Note?.Markdown;
-        if (string.IsNullOrWhiteSpace(body)) return null;
 
         var title = string.IsNullOrWhiteSpace(m.Title) ? "Untitled meeting" : m.Title.Trim();
+        // 要約 → 手書きメモの順に、会議名の見出しを落として中身が残った方を使う
+        var body = new[] { m.Summaries?.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.Markdown))?.Markdown, m.Note?.Markdown }
+            .Select(md => string.IsNullOrWhiteSpace(md) ? "" : StripLeadingTitle(md.Trim(), title))
+            .FirstOrDefault(s => s.Length > 0);
+        if (body is null) return null;
+
         var sb = new StringBuilder();
-        sb.Append("**").Append(title).Append("**");
-        var text = StripLeadingTitle(body.Trim(), title);
-        if (text.Length > 0) sb.Append("\n\n").Append(text);
+        sb.Append("**").Append(title).Append("**\n\n").Append(body);
 
         var todo = (m.ActionItems ?? [])
             .Where(a => a.CompletedAt is null && !string.IsNullOrWhiteSpace(a.Text))
@@ -138,13 +139,22 @@ public static class Recap
     /// <summary>
     /// 要約の先頭が会議名の見出しなら落とす。タイトルは必ずこちらで付けるので、
     /// 「# 案件進捗定例会議」で始まる要約をそのまま足すとタイトルが二度出てしまう。
+    /// 落とした結果が空なら空文字(呼び手が次の候補に移る)。
     /// </summary>
     private static string StripLeadingTitle(string body, string title)
     {
         var br = body.IndexOf('\n');
-        var first = br < 0 ? body : body[..br];
-        if (!SameText(Unmark(first), title)) return body;
-        return br < 0 ? "" : body[(br + 1)..].TrimStart('\n');
+        if (!SameText(Unmark(br < 0 ? body : body[..br]), title)) return body;
+        return DropSetextUnderline(br < 0 ? "" : body[(br + 1)..]).Trim();
+    }
+
+    /// <summary>「会議名 ⏎ ====」形式の見出しを落としたとき、下線だけが残らないようにする</summary>
+    private static string DropSetextUnderline(string rest)
+    {
+        var br = rest.IndexOf('\n');
+        var line = (br < 0 ? rest : rest[..br]).Trim();
+        if (line.Length < 2 || !(line.All(c => c == '=') || line.All(c => c == '-'))) return rest;
+        return br < 0 ? "" : rest[(br + 1)..];
     }
 
     /// <summary>見出しの # と太字・斜体の * _ を外す。「## *会議名*」も会議名になる</summary>
