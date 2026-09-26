@@ -32,7 +32,7 @@ compose.yml              ローカル開発(genkan 経由で https://aizuchi.loc
 
 ## ローカルで動かす(genkan)
 
-[danything/genkan](https://github.com/danything/genkan) を起動しておくと、`proxy` ネットワーク経由で
+[danything/genkan](https://github.com/danything/genkan) を起動しておくと、`genkan` ネットワーク経由で
 https://aizuchi.localhost に振り分けられる(ポートは公開しない)。
 トークンと API キーは `compose.override.yml`(git 管理外)に書く。
 
