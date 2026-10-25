@@ -100,4 +100,23 @@ public class WebhookTests
         await Assert.That(first.TryGetProperty("thread_ts", out _)).IsFalse();                  // 最初はトップレベル
         await Assert.That(second.GetProperty("thread_ts").GetString()).IsEqualTo("1700000000.000100");
     }
+
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public readonly List<string> Lines = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel level) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel level, Microsoft.Extensions.Logging.EventId id, TState state,
+            Exception? ex, Func<TState, Exception?, string> format) => Lines.Add(format(state, ex));
+    }
+
+    [Test]
+    public async Task ログには設定の名前を書き_理由の改行は置き換える()
+    {
+        var log = new ListLogger();
+        var ep = new WebhookEndpoint([new FakeSource("anarlog", new WebhookOutcome.Ignore("処理済み x\nINFO 偽の行"))], new FakePoster(), log);
+        await Assert.That((await Handle(ep, "AnArLog")).Status).IsEqualTo(200);
+        await Assert.That(log.Lines).Count().IsEqualTo(1);
+        await Assert.That(log.Lines[0]).IsEqualTo("webhook 受信 source=anarlog 投稿なし: 処理済み x?INFO 偽の行");
+    }
 }
