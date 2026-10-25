@@ -20,24 +20,25 @@ public sealed class WebhookEndpoint(IReadOnlyList<IWebhookSource> sources, IChan
         if (source is null) return new(404, "unknown source");
         if (request.Body.Length > MaxBodyBytes) return new(413, "body too large");
 
+        // ログには URL の name ではなく、設定にある送り元の名前を書く。理由は本文から作られることがあるので LogText を通す
         switch (await source.HandleAsync(request, ct))
         {
             case WebhookOutcome.Reject r:
-                log.LogWarning("webhook 拒否 source={Source} status={Status}: {Reason}", name, r.Status, r.Reason);
+                log.LogWarning("webhook 拒否 source={Source} status={Status}: {Reason}", source.Name, r.Status, LogText.Clean(r.Reason));
                 return new(r.Status, r.Reason);
             case WebhookOutcome.Ignore i:
-                log.LogInformation("webhook 受信 source={Source} 投稿なし: {Reason}", name, i.Reason);
+                log.LogInformation("webhook 受信 source={Source} 投稿なし: {Reason}", source.Name, LogText.Clean(i.Reason));
                 return new(200, "ok");
             case WebhookOutcome.Post p:
                 try
                 {
                     await poster.PostAsync(p.Channel, p.Markdown, ct);
-                    log.LogInformation("webhook 受信 source={Source} channel={Channel} に投稿", name, p.Channel);
+                    log.LogInformation("webhook 受信 source={Source} channel={Channel} に投稿", source.Name, p.Channel);
                     return new(200, "ok");
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    log.LogError(ex, "webhook の投稿に失敗 source={Source} channel={Channel}。送り元の再送に任せる", name, p.Channel);
+                    log.LogError(ex, "webhook の投稿に失敗 source={Source} channel={Channel}。送り元の再送に任せる", source.Name, p.Channel);
                     return new(503, "post failed");
                 }
             default:
