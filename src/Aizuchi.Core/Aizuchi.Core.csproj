@@ -1,6 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- コネクタ(Slack など)とプロバイダ(Claude など)の共通インターフェースと、返信の流れ本体 -->
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="11.0.0" />
-  </ItemGroup>
+  <!-- コネクタ(Slack など)とプロバイダ(Claude など)の共通インターフェースと、返信の流れ本体。
+       ログの Microsoft.Extensions.Logging.Abstractions は .NET 11 から共有フレームワーク (Microsoft.NETCore.App) に
+       入ったので、パッケージとしては参照しない (参照すると NU1510) -->
 </Project>

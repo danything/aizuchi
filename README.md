@@ -1,7 +1,7 @@
 # aizuchi
 
 チャットで相槌を打つ AI ボット。**コネクタ(Slack …)× プロバイダ(Claude …)× 道具(GitHub、OpenProject …)** を
-差し替えられる器で、.NET 10 Native AOT の単一バイナリ。Socket Mode なので公開 URL も Ingress も要らず、
+差し替えられる器で、.NET 11 Native AOT の単一バイナリ。Socket Mode なので公開 URL も Ingress も要らず、
 k3s に Helm で置けば動く。
 
 SaaS の有料「Slack 連携」の置き換え先も兼ねる。外部サービスの webhook を受けてチャンネルに流すときだけ `/webhooks/` を Ingress に出す。
